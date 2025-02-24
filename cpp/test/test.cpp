@@ -21,7 +21,8 @@ int main(int argc, char** argv) {
     printf("#%3d 0x%02x\n", (int)i, (int)code);
     if (ret == mfnt::Status::SUCCESS) {
       printf("  glyph.width: %d\n", glyph.width);
-      ret = font.extractGlyph(&glyph, buff);
+      mfnt::ExtractContext ctx(buff);
+      ret = font.extractGlyph(&glyph, &ctx);
       if (ret != mfnt::Status::SUCCESS) {
         printf("  *ERROR CODE: %02x\n", (int)ret);
         return 1;

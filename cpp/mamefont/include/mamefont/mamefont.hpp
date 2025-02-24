@@ -19,20 +19,23 @@ struct GlyphInfo {
   const uint8_t *data;
 };
 
-static inline void mfntMemcpy(uint8_t *dst, const uint8_t *src, uint8_t size) {
-  while (size-- != 0) {
-    *(dst++) = *(src++);
+struct ExtractContext {
+  uint8_t *buff;
+  uint16_t start;
+  uint16_t end;
+  uint16_t pos = 0;
+  uint8_t last = 0;
+  ExtractContext(uint8_t *buff, uint16_t start = 0, uint16_t end = -1)
+      : buff(buff), start(start), end(end) {}
+  void write(uint8_t value) {
+    if (start <= pos && pos < end) {
+      buff[pos++] = value;
+    }
   }
-}
+};
 
-static inline void mfntMemset(uint8_t *dst, const uint8_t value, uint8_t size) {
-  while (size-- != 0) {
-    *(dst++) = value;
-  }
-}
-
-static inline uint8_t shiftOp(uint8_t *wrPtr, uint8_t *pLast, uint8_t inst) {
-  uint8_t last = *pLast;
+static inline void shiftOp(ExtractContext *ctx, uint8_t inst) {
+  uint8_t last = ctx->last;
   uint8_t shift_dir = inst & 0x20;
   uint8_t post_op = inst & 0x10;
   uint8_t len = (inst & 0x07) + 1;
@@ -48,32 +51,32 @@ static inline uint8_t shiftOp(uint8_t *wrPtr, uint8_t *pLast, uint8_t inst) {
         if (post_op) last |= 0x80;
       }
     } while (shift_size-- != 0);
-    *(wrPtr++) = last;
+    ctx->write(last);
   }
-  *pLast = last;
-  return len;
+  ctx->last = last;
 }
 
-static inline uint8_t copyOp(uint8_t *wrPtr, uint8_t *pLast, uint8_t inst) {
+static inline void copyOp(ExtractContext *ctx, uint8_t inst) {
   uint8_t offset = (inst >> 4) & 0x3;
   uint8_t len = (inst & 0x0f) + 1;
-  mfntMemcpy(wrPtr, wrPtr - len - offset, len);
-  *pLast = *(wrPtr + len - 1);
-  return len;
+  uint8_t *src = ctx->buff + ctx->pos - len - offset;
+  for (int i = len; i != 0; i--) {
+    ctx->write(*(src++));
+  }
+  ctx->last = ctx->buff[ctx->pos - 1];
 }
 
-static inline uint8_t repeatOp(uint8_t *wrPtr, uint8_t *pLast, uint8_t inst) {
+static inline void repeatOp(ExtractContext *ctx, uint8_t inst) {
   uint8_t len = (inst & 0x0f) + 1;
-  mfntMemset(wrPtr, *pLast, len);
-  return len;
+  for (int i = len; i != 0; i--) {
+    ctx->write(ctx->last);
+  }
 }
 
-static inline uint8_t xorOp(uint8_t *wrPtr, uint8_t *pLast, uint8_t inst) {
-  uint8_t last = *pLast;
+static inline void xorOp(ExtractContext *ctx, uint8_t inst) {
   uint8_t mask = (inst & 0x08) ? 0x03 : 0x01;
   uint8_t bit = inst & 0x07;
-  *pLast = *(wrPtr++) = *pLast ^ (mask << bit);
-  return 1;
+  ctx->last = ctx->buff[ctx->pos++] = ctx->last ^ (mask << bit);
 }
 
 class Font {
@@ -134,33 +137,33 @@ public:
     return glyph->width * rows;
   }
 
-  Status extractGlyph(const GlyphInfo* glyph, uint8_t *dst) const {
+  Status extractGlyph(const GlyphInfo *glyph, ExtractContext *ctx) const {
+    if (ctx->end == 0xffff) {
+      ctx->end = getGlyphSizeInBytes(glyph);
+    }
     const uint8_t *rdPtr = glyph->data;
-    uint8_t *wrPtr = dst;
-    uint8_t *end = dst + getGlyphSizeInBytes(glyph);
-    uint8_t last = 0x00;
-    while (wrPtr < end) {
+    while (ctx->pos < ctx->end) {
       uint8_t inst = *(rdPtr++);
       switch (inst & 0xf0) {
         case 0x00: // LD
         case 0x10: // LD
         case 0x20: // LD
         case 0x30: // LD
-          last = *(wrPtr++) = segTable[inst & 0x3f];
+          ctx->last = ctx->buff[ctx->pos++] = segTable[inst & 0x3f];
           break;
         
         case 0x40: // SLC
         case 0x50: // SLS
         case 0x60: // SRC
         case 0x70: // SRS
-          wrPtr += shiftOp(wrPtr, &last, inst);
+          shiftOp(ctx, inst);
           break;
         
         case 0x80: // CPY
         case 0x90: // CPY
         case 0xa0: // CPY
         case 0xb0: // CPY
-          wrPtr += copyOp(wrPtr, &last, inst);
+          copyOp(ctx, inst);
           break;
         
         case 0xc0: // REV
@@ -168,12 +171,12 @@ public:
           return Status::UNKNOWN_OPCODE;
         
         case 0xe0: // RPT
-          wrPtr += repeatOp(wrPtr, &last, inst);
+          repeatOp(ctx, inst);
           break;
 
         case 0xf0: // XOR
           if (inst == 0xff) return Status::UNKNOWN_OPCODE;
-          wrPtr += xorOp(wrPtr, &last, inst);
+          xorOp(ctx, inst);
           break;
 
         default:
