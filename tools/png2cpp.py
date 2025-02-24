@@ -18,12 +18,13 @@ class CompressContext:
             RawByte(char.width),
         ]
         
-class Png2ArrayContext:
+class Png2Cpp:
     def __init__(self):
         self.font = Font()
         self.offset_y = 0
         self.input_path: str = None
-        self.output_path: str = None
+        self.cpp_output_path: str = None
+        self.hpp_output_path: str = None
         self.include_dir: str = None
         self.name: str = None
         self.cpp_namespace: str = None
@@ -282,18 +283,18 @@ class Png2ArrayContext:
     def suggest_shift(self, ctx: CompressContext) -> None:
         cands: list[InstBase] = []
         max_size = min(8, ctx.end_pos - ctx.pos)
-        for shift_dir, shift_in_val, shift_size in product(ShiftDir, range(0, 2), range(1, 3)):
+        for shift_dir, post_op, shift_size in product(ShiftDir, range(0, 2), range(1, 3)):
             work = ctx.last
             size = 0
             while True:
                 for i in range(shift_size):
                     if shift_dir == ShiftDir.LEFT:
-                        if shift_in_val == 0:
+                        if post_op == 0:
                             work = (work << 1) & 0xfe
                         else:
                             work = (work << 1) | 0x01
                     else:
-                        if shift_in_val == 0:
+                        if post_op == 0:
                             work = (work >> 1) & 0x7f
                         else:
                             work = (work >> 1) | 0x80
@@ -302,7 +303,7 @@ class Png2ArrayContext:
                 else:
                     break
             if size > 0:
-                cands.append(ShiftOp(size, shift_dir, shift_in_val, shift_size))
+                cands.append(ShiftOp(size, shift_dir, post_op, shift_size))
         return cands
 
     def suggest_repeat(self, ctx: CompressContext) -> list[InstBase]:
@@ -345,21 +346,26 @@ class Png2ArrayContext:
                     return [XorOp(width, pos)]
         return []
     
-    def get_file_name(self, ext: str = None) -> str:
-        if self.output_path:
-            path = self.output_path
-        else:
-            path = self.input_path
-        path = re.sub(r'(\.[^.]*)$', '', path)
-        if ext:
-            return path + '.' + ext
-        else:
-            return path
+    def get_file_name(self, cpp: bool) -> str:
+        path = self.cpp_output_path if cpp else self.hpp_output_path
+
+        if not path:
+            if self.cpp_output_path:
+                path = self.cpp_output_path
+            elif self.hpp_output_path:
+                path = self.hpp_output_path
+            else:
+                path = self.input_path
+            
+            path = os.path.splitext(path)[0]
+            path = path + ('.cpp' if cpp else '.hpp')
+
+        return path
     
     def get_font_name(self) -> str:
         name = self.name
         if not name:
-            name = os.path.basename(self.get_file_name())
+            name = os.path.basename(self.get_file_name(False))
             name = os.path.splitext(name)[0]
         return name
     
@@ -367,7 +373,7 @@ class Png2ArrayContext:
         f.write('#include <stdint.h>\n')
         f.write('#include "mamefont/mamefont.hpp"\n')
         if cpp:
-            hpp_path = os.path.basename(self.get_file_name('hpp'))
+            hpp_path = os.path.basename(self.get_file_name(False))
             if self.include_dir:
                 hpp_path = os.path.join(self.include_dir, hpp_path)
             f.write(f'#include "{hpp_path}"\n')
@@ -416,7 +422,7 @@ class Png2ArrayContext:
         self.write_array_content(f, 1, id, with_content, self.glyph_data)
     
     def write_font_inst(self, f, cpp: bool):
-        f.write(f'extern const mamefont::Font {self.get_font_name()}')
+        f.write(f'extern const mfnt::Font {self.get_font_name()}')
         if cpp:
             f.write('(\n')
             f.write(f'  {self.font.height},\n')
@@ -430,7 +436,7 @@ class Png2ArrayContext:
         f.write(';\n\n')
     
     def write_hpp(self):
-        with open(self.get_file_name('hpp'), 'w') as f:
+        with open(self.get_file_name(False), 'w') as f:
             f.write('#pragma once\n\n')
             self.write_includes(f, False)
             self.write_namespace_start(f)
@@ -438,7 +444,7 @@ class Png2ArrayContext:
             self.write_namespace_end(f)
     
     def write_cpp(self):
-        with open(self.get_file_name('cpp'), 'w') as f:
+        with open(self.get_file_name(True), 'w') as f:
             self.write_includes(f, True)
             self.write_namespace_start(f)
             self.write_char_table(f, True)
@@ -450,21 +456,38 @@ class Png2ArrayContext:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input', required=True)
-    parser.add_argument('-o', '--output', default=None)
     parser.add_argument('-n', '--name', default=None)
+    parser.add_argument('-o', '--output_dir', default=None)
+    parser.add_argument('--output_cpp', default=None)
+    parser.add_argument('--output_hpp', default=None)
     parser.add_argument('--include_dir', default=None)
     parser.add_argument('--cpp_namespace', default=None)
     args = parser.parse_args()
     
-    ctx = Png2ArrayContext()
-    ctx.input_path = args.input
-    ctx.output_path = args.output
-    ctx.include_dir = args.include_dir
-    ctx.name = args.name
-    ctx.cpp_namespace = args.cpp_namespace
-
-    ctx.load_image()
-    ctx.compress()
+    conv = Png2Cpp()
+    conv.input_path = args.input
     
-    ctx.write_hpp()
-    ctx.write_cpp()
+    if args.name:
+        conv.name = args.name
+    elif args.input:
+        conv.name = os.path.basename(args.input)
+        conv.name = os.path.splitext(conv.name)[0]
+    
+    conv.cpp_output_path = conv.name + '.cpp'
+    conv.hpp_output_path = conv.name + '.hpp'
+    if args.output_dir:
+        conv.cpp_output_path = os.path.join(args.output_dir, conv.cpp_output_path)
+        conv.hpp_output_path = os.path.join(args.output_dir, conv.hpp_output_path)
+    if args.output_cpp:
+        conv.cpp_output_path = args.output_cpp
+    if args.output_hpp:
+        conv.hpp_output_path = args.output_hpp
+    
+    conv.include_dir = args.include_dir
+    conv.cpp_namespace = args.cpp_namespace
+
+    conv.load_image()
+    conv.compress()
+    
+    conv.write_hpp()
+    conv.write_cpp()

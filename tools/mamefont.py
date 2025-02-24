@@ -116,20 +116,20 @@ class RepeatOp(BlockOp):
         super().__init__(OpCode.RPT, size)
 
 class ShiftOp(BlockOp):
-    def __init__(self, size: int, shift_dir: ShiftDir, shift_in_val: int, shift_size: int):
+    def __init__(self, size: int, shift_dir: ShiftDir, post_op: int, shift_size: int):
         if shift_dir == ShiftDir.LEFT:
-            if shift_in_val == 0:
+            if post_op == 0:
                 op = OpCode.SLC
             else:
                 op = OpCode.SLS
         else:
-            if shift_in_val == 0:
+            if post_op == 0:
                 op = OpCode.SRC
             else:
                 op = OpCode.SRS
         super().__init__(op, size)
-        self.shift_in_val = shift_in_val
-        self.dir = shift_dir
+        self.post_op = post_op
+        self.shift_dir = shift_dir
         self.shift_size = shift_size
 
     def op_offset(self):
