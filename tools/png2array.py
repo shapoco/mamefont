@@ -12,7 +12,9 @@ class CompressContext:
         self.pos: int = 0
         self.last: int = 0
         self.end_pos: int = len(char.pix)
-        self.program: list[InstBase] = []
+        self.program: list[InstBase] = [
+            RawByte(char.width),
+        ]
         
 class Png2ArrayContext:
     def __init__(self):
@@ -134,7 +136,7 @@ class Png2ArrayContext:
         self.min_code = codes[0]
         self.max_code = codes[-1]
 
-        program: list[int] = []
+        program: list[InstBase] = []
 
         # 圧縮
         verbose_print(f'Compressing...')
@@ -184,7 +186,7 @@ class Png2ArrayContext:
         total_pre = FONT_HEADER_SIZE
         total_post = FONT_HEADER_SIZE
         
-        code_table_size = (self.max_code - self.min_code + 1) * CHAR_HEADER_SIZE
+        code_table_size = (self.max_code - self.min_code + 1) * CHAR_TABLE_ENTRY_SIZE
         seg_table_size = len(seg_util.keys())
         total_pre += code_table_size
         total_post += code_table_size
@@ -194,7 +196,9 @@ class Png2ArrayContext:
         pre_util: dict[OpCode, int] = {}
         post_util: dict[OpCode, int] = {}
         for inst in program:
-            if inst.op in post_util:
+            if inst.op == OpCode.HDR:
+                pass
+            elif inst.op in post_util:
                 pre_util[inst.op] += inst.size
                 post_util[inst.op] += 1
             else:

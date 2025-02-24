@@ -1,7 +1,7 @@
 import enum
 
 FONT_HEADER_SIZE = 4
-CHAR_HEADER_SIZE = 3
+CHAR_TABLE_ENTRY_SIZE = 2
 SEG_HEIGHT = 8
 LOG_INDENT = '    '
 
@@ -9,7 +9,7 @@ class Char:
     def __init__(self, x: int, y: int, w: int, code:int, pix: list[int]):
         self.x = x
         self.y = y
-        self.w = w
+        self.width = w
         self.code = code
         self.pix = pix
 
@@ -21,32 +21,30 @@ class Font:
 class OpCode(enum.IntEnum):
     LD = 0x00
     SLC = 0x40
-    SRC = 0x50
-    SLS = 0x60
+    SLS = 0x50
+    SRC = 0x60
     SRS = 0x70
     CPY = 0x80
-    REV0 = 0xc0
-    REV1 = 0xd0
+    REV = 0xc0
     RPT = 0xe0
-    XOR1 = 0xf0
-    XOR2 = 0xf8
+    XOR = 0xf0
+    HDR = -1
 
 class ShiftDir(enum.IntEnum):
     LEFT = 0
     RIGHT = 1
 
 priority = {
-    OpCode.REV1: 0,
-    OpCode.REV0: 1,
+    OpCode.REV: 1,
     OpCode.CPY: 2,
     OpCode.LD: 3,
     OpCode.SLC: 4,
     OpCode.SRC: 4,
     OpCode.SLS: 5,
     OpCode.SRS: 5,
-    OpCode.XOR1: 6,
-    OpCode.XOR2: 6,
+    OpCode.XOR: 6,
     OpCode.RPT: 8,
+    OpCode.HDR: -1,
 }
 
 class InstBase:
@@ -63,6 +61,14 @@ class InstBase:
     def score(self) -> int:
         return self.size * 0x100 + priority[self.op]
 
+class RawByte(InstBase):
+    def __init__(self, value: int):
+        super().__init__(OpCode.HDR, 0)
+        self.value = value
+
+    def get_inst_code(self) -> int:
+        return self.value
+
 class SingleOp(InstBase):
     def __init__(self, op: OpCode):
         super().__init__(op, 1)
@@ -77,13 +83,7 @@ class LoadOp(SingleOp):
 
 class XorOp(SingleOp):
     def __init__(self, width: int, pos: int):
-        if width == 1:
-            op = OpCode.XOR1
-        elif width == 2:
-            op = OpCode.XOR2
-        else:
-            raise ValueError(f"Invalid width {width}")
-        super().__init__(op)
+        super().__init__(OpCode.XOR)
         self.width = width
         self.bit = pos
 
@@ -130,9 +130,7 @@ class ShiftOp(BlockOp):
 
     def op_offset(self):
         return \
-            self.dir.value * 5 + \
-            self.shift_in_val * 4 + \
-            (self.shift_size - 1) * 3 + \
+            (self.shift_size - 1) * 0x8 + \
             super().op_offset()
 
 def is_red(pix: list[int]) -> bool:
