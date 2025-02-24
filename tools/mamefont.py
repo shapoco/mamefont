@@ -1,5 +1,7 @@
 import enum
 
+FONT_HEADER_SIZE = 4
+CHAR_HEADER_SIZE = 3
 SEG_HEIGHT = 8
 LOG_INDENT = '    '
 
@@ -18,34 +20,32 @@ class Font:
 
 class OpCode(enum.IntEnum):
     LD = 0x00
-    LSL = 0x40
-    LSR = 0x50
-    ASL = 0x60
-    ASR = 0x70
+    SLC = 0x40
+    SRC = 0x50
+    SLS = 0x60
+    SRS = 0x70
     CPY = 0x80
     REV0 = 0xc0
     REV1 = 0xd0
     RPT = 0xe0
-    XOR = 0xf0
+    XOR1 = 0xf0
+    XOR2 = 0xf8
 
 class ShiftDir(enum.IntEnum):
     LEFT = 0
     RIGHT = 1
-
-class ShiftMode(enum.IntEnum):
-    LOGICAL = 0
-    ARITHMETIC = 1
 
 priority = {
     OpCode.REV1: 0,
     OpCode.REV0: 1,
     OpCode.CPY: 2,
     OpCode.LD: 3,
-    OpCode.LSL: 4,
-    OpCode.LSR: 4,
-    OpCode.ASL: 5,
-    OpCode.ASR: 5,
-    OpCode.XOR: 6,
+    OpCode.SLC: 4,
+    OpCode.SRC: 4,
+    OpCode.SLS: 5,
+    OpCode.SRS: 5,
+    OpCode.XOR1: 6,
+    OpCode.XOR2: 6,
     OpCode.RPT: 8,
 }
 
@@ -76,12 +76,19 @@ class LoadOp(SingleOp):
         return self.seg
 
 class XorOp(SingleOp):
-    def __init__(self, bit: int):
-        super().__init__(OpCode.XOR)
-        self.bit = bit
+    def __init__(self, width: int, pos: int):
+        if width == 1:
+            op = OpCode.XOR1
+        elif width == 2:
+            op = OpCode.XOR2
+        else:
+            raise ValueError(f"Invalid width {width}")
+        super().__init__(op)
+        self.width = width
+        self.bit = pos
 
     def op_offset(self):
-        return self.bit
+        return (self.width - 1) * 8 + self.bit
     
 class BlockOp(InstBase):
     def __init__(self, op: OpCode, size: int):
@@ -105,26 +112,26 @@ class RepeatOp(BlockOp):
         super().__init__(OpCode.RPT, size)
 
 class ShiftOp(BlockOp):
-    def __init__(self, size: int, mode: ShiftMode, dir: ShiftDir, shift_size: int):
-        if mode == ShiftMode.LOGICAL:
-            if dir == ShiftDir.LEFT:
-                op = OpCode.LSL
+    def __init__(self, size: int, shift_dir: ShiftDir, shift_in_val: int, shift_size: int):
+        if shift_dir == ShiftDir.LEFT:
+            if shift_in_val == 0:
+                op = OpCode.SLC
             else:
-                op = OpCode.LSR
+                op = OpCode.SLS
         else:
-            if dir == ShiftDir.LEFT:
-                op = OpCode.ASL
+            if shift_in_val == 0:
+                op = OpCode.SRC
             else:
-                op = OpCode.ASR
+                op = OpCode.SRS
         super().__init__(op, size)
-        self.mode = mode
-        self.dir = dir
+        self.shift_in_val = shift_in_val
+        self.dir = shift_dir
         self.shift_size = shift_size
 
     def op_offset(self):
         return \
-            self.mode.value * 5 + \
-            self.dir.value * 4 + \
+            self.dir.value * 5 + \
+            self.shift_in_val * 4 + \
             (self.shift_size - 1) * 3 + \
             super().op_offset()
 

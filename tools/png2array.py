@@ -134,8 +134,6 @@ class Png2ArrayContext:
         self.min_code = codes[0]
         self.max_code = codes[-1]
 
-        major_segs = sorted(self.seg_util.keys(), key=lambda x: self.seg_util[x], reverse=True)
-
         program: list[int] = []
 
         # 圧縮
@@ -182,12 +180,16 @@ class Png2ArrayContext:
                 msg += ' | (Deleted)'
             verbose_print(msg)
         verbose_print()    
-                
-        code_table_size = (self.max_code - self.min_code + 1) * 2
-        seg_table_size = len(seg_util.keys())
         
-        total_pre = code_table_size
-        total_post = code_table_size + seg_table_size + len(program)
+        total_pre = FONT_HEADER_SIZE
+        total_post = FONT_HEADER_SIZE
+        
+        code_table_size = (self.max_code - self.min_code + 1) * CHAR_HEADER_SIZE
+        seg_table_size = len(seg_util.keys())
+        total_pre += code_table_size
+        total_post += code_table_size
+        
+        total_post += seg_table_size + len(program)
         
         pre_util: dict[OpCode, int] = {}
         post_util: dict[OpCode, int] = {}
@@ -228,7 +230,7 @@ class Png2ArrayContext:
             cands: list[InstBase] = []
             cands += self.suggest_load(ctx)
             cands += self.suggest_shift(ctx)
-            cands += self.suggest_copy(ctx)                
+            cands += self.suggest_copy(ctx)
             cands += self.suggest_repeat(ctx)
             cands += self.suggest_xor(ctx)
 
@@ -249,29 +251,27 @@ class Png2ArrayContext:
     def suggest_shift(self, ctx: CompressContext) -> None:
         cands: list[InstBase] = []
         max_size = min(8, ctx.end_pos - ctx.pos)
-        for mode, dir, shift_size in product(ShiftMode, ShiftDir, range(1, 3)):
+        for shift_dir, shift_in_val, shift_size in product(ShiftDir, range(0, 2), range(1, 3)):
             work = ctx.last
             size = 0
             while True:
                 for i in range(shift_size):
-                    if dir == ShiftDir.LEFT:
-                        if mode == ShiftMode.LOGICAL:
+                    if shift_dir == ShiftDir.LEFT:
+                        if shift_in_val == 0:
                             work = (work << 1) & 0xfe
                         else:
-                            work = (work << 1) & (work & 0x01)
-                            #work = (work << 1) | 0x01
+                            work = (work << 1) | 0x01
                     else:
-                        if mode == ShiftMode.LOGICAL:
+                        if shift_in_val == 0:
                             work = (work >> 1) & 0x7f
                         else:
-                            work = (work >> 1) & (work & 0x80)
-                            #work = (work >> 1) | 0x80
+                            work = (work >> 1) | 0x80
                 if size < max_size and ctx.char.pix[ctx.pos + size] == work:
                     size += 1
                 else:
                     break
             if size > 0:
-                cands.append(ShiftOp(size, mode, dir, shift_size))
+                cands.append(ShiftOp(size, shift_dir, shift_in_val, shift_size))
         return cands
 
     def suggest_repeat(self, ctx: CompressContext) -> list[InstBase]:
@@ -306,14 +306,12 @@ class Png2ArrayContext:
         return [LoadOp(ctx.char.pix[ctx.pos])]
         
     def suggest_xor(self, ctx: CompressContext) -> list[InstBase]:
-        for i in range(SEG_HEIGHT):
-            seg = ctx.char.pix[ctx.pos]
-            if seg == ctx.last ^ (1 << i):
-                return [XorOp(i)]
-        for i in range(SEG_HEIGHT - 1):
-            seg = ctx.char.pix[ctx.pos]
-            if seg == ctx.last ^ (3 << i):
-                return [XorOp(i + SEG_HEIGHT)]
+        for width in range(1, 3):
+            mask = (1 << width) - 1
+            for pos in range(SEG_HEIGHT - width + 1):
+                seg = ctx.char.pix[ctx.pos]
+                if seg == ctx.last ^ (mask << pos):
+                    return [XorOp(width, pos)]
         return []
         
 if __name__ == '__main__':
