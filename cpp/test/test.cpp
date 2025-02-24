@@ -13,6 +13,7 @@ int main(int argc, char** argv) {
 
   uint8_t maxWidth = font.getMaxWidth();
   uint8_t buff[maxWidth * font.rows];
+  uint8_t history[mfnt::HISTORY_SIZE];
 
   for (int i = 0; i < font.numChars; i++) {
     char code = font.codeOffset + i;
@@ -21,8 +22,9 @@ int main(int argc, char** argv) {
     printf("#%3d 0x%02x\n", (int)i, (int)code);
     if (ret == mfnt::Status::SUCCESS) {
       printf("  glyph.width: %d\n", glyph.width);
-      mfnt::ExtractContext ctx(buff);
-      ret = font.extractGlyph(&glyph, &ctx);
+      mfnt::ExtractContext ctx;
+      ctx.init(&glyph, buff);
+      ret = font.extractGlyph(&ctx);
       if (ret != mfnt::Status::SUCCESS) {
         printf("  *ERROR CODE: %02x\n", (int)ret);
         return 1;

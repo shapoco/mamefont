@@ -6,6 +6,7 @@ namespace mfnt {
 
 static constexpr uint16_t GLYPH_OFFSET_DUMMY = 0xffffu;
 static constexpr uint8_t SEGMENT_HEIGHT = 8;
+static constexpr uint8_t HISTORY_SIZE = 32;
 
 enum class Status {
   SUCCESS = 0,
@@ -20,16 +21,42 @@ struct GlyphInfo {
 };
 
 struct ExtractContext {
+  GlyphInfo *glyph;
   uint8_t *buff;
   uint16_t start;
   uint16_t end;
-  uint16_t pos = 0;
-  uint8_t last = 0;
-  ExtractContext(uint8_t *buff, uint16_t start = 0, uint16_t end = -1)
-      : buff(buff), start(start), end(end) {}
+  uint16_t wrPos;
+  uint8_t last;
+  uint8_t *history;
+  const uint8_t *rdPtr;
+
+  void init(GlyphInfo *glyph, uint8_t *buff, uint16_t start = 0, uint16_t end = -1, uint8_t *history = nullptr) {
+    this->glyph = glyph;
+    this->buff = buff;
+    this->start = start;
+    this->end = end;
+    this->wrPos = 0;
+    this->last = 0;
+    this->history = history;
+    this->rdPtr = glyph->data;
+  }
+  
   void write(uint8_t value) {
-    if (start <= pos && pos < end) {
-      buff[pos++] = value;
+    if (start <= wrPos && wrPos < end) {
+      buff[wrPos++] = value;
+    }
+    if (history) {
+      history[wrPos & (HISTORY_SIZE - 1)] = value;
+    }
+    this->last = value;
+  }
+
+  uint8_t read(uint16_t pos) const {
+    if (history) {
+      return history[pos & (HISTORY_SIZE - 1)];
+    }
+    else {
+      return buff[pos];
     }
   }
 };
@@ -53,17 +80,15 @@ static inline void shiftOp(ExtractContext *ctx, uint8_t inst) {
     } while (shift_size-- != 0);
     ctx->write(last);
   }
-  ctx->last = last;
 }
 
 static inline void copyOp(ExtractContext *ctx, uint8_t inst) {
   uint8_t offset = (inst >> 4) & 0x3;
   uint8_t len = (inst & 0x0f) + 1;
-  uint8_t *src = ctx->buff + ctx->pos - len - offset;
+  uint16_t rdPos = ctx->wrPos - len - offset;
   for (int i = len; i != 0; i--) {
-    ctx->write(*(src++));
+    ctx->write(ctx->read(rdPos++));
   }
-  ctx->last = ctx->buff[ctx->pos - 1];
 }
 
 static inline void repeatOp(ExtractContext *ctx, uint8_t inst) {
@@ -76,7 +101,7 @@ static inline void repeatOp(ExtractContext *ctx, uint8_t inst) {
 static inline void xorOp(ExtractContext *ctx, uint8_t inst) {
   uint8_t mask = (inst & 0x08) ? 0x03 : 0x01;
   uint8_t bit = inst & 0x07;
-  ctx->last = ctx->buff[ctx->pos++] = ctx->last ^ (mask << bit);
+  ctx->write(ctx->last ^ (mask << bit));
 }
 
 class Font {
@@ -137,19 +162,18 @@ public:
     return glyph->width * rows;
   }
 
-  Status extractGlyph(const GlyphInfo *glyph, ExtractContext *ctx) const {
+  Status extractGlyph(ExtractContext *ctx) const {
     if (ctx->end == 0xffff) {
-      ctx->end = getGlyphSizeInBytes(glyph);
+      ctx->end = getGlyphSizeInBytes(ctx->glyph);
     }
-    const uint8_t *rdPtr = glyph->data;
-    while (ctx->pos < ctx->end) {
-      uint8_t inst = *(rdPtr++);
+    while (ctx->wrPos < ctx->end) {
+      uint8_t inst = *(ctx->rdPtr++);
       switch (inst & 0xf0) {
         case 0x00: // LD
         case 0x10: // LD
         case 0x20: // LD
         case 0x30: // LD
-          ctx->last = ctx->buff[ctx->pos++] = segTable[inst & 0x3f];
+          ctx->last = ctx->buff[ctx->wrPos++] = segTable[inst & 0x3f];
           break;
         
         case 0x40: // SLC
