@@ -5,6 +5,8 @@ import argparse
 import numpy as np
 from itertools import product
 from mamefont import *
+import re
+import os
 
 class CompressContext:
     def __init__(self, char: Char):
@@ -22,12 +24,17 @@ class Png2ArrayContext:
         self.offset_y = 0
         self.input_path: str = None
         self.output_path: str = None
+        self.include_dir: str = None
+        self.name: str = None
         self.cpp_namespace: str = None
         self.seg_util: dict[int, int] = {}
         self.char_dict: dict[int, Char] = {}
         self.min_code: int = 0
         self.max_code: int = 255
         self.num_rows = 0
+        self.seg_table = []
+        self.char_table = []
+        self.glyph_data = []
 
     def report_util(self):
         verbose_print(f"Num of segments: {len(self.seg_util)}")
@@ -67,7 +74,7 @@ class Png2ArrayContext:
         verbose_print(f'{LOG_INDENT}Font height: {self.font.height} (num rows: {self.num_rows})')
 
         # 文字を列挙する
-        code = 0
+        code = 0x20
         for base_y in range(self.font.height, img_h):
             base_x = 0
             while base_x < img_w:
@@ -138,34 +145,54 @@ class Png2ArrayContext:
 
         program: list[InstBase] = []
 
+        # self.char_dict のキーを小さい順に取り出す
+        used_codes = sorted(self.char_dict.keys())
+
         # 圧縮
         verbose_print(f'Compressing...')
-        for code in self.char_dict:
+        char_table_depth = (self.max_code - self.min_code + 1)
+        char_table_dummy_value = (1 << (8 * CHAR_TABLE_ENTRY_SIZE)) - 1
+        self.char_table = [char_table_dummy_value] * char_table_depth
+        for code in used_codes:
             ctx = CompressContext(self.char_dict[code])
             self.compress_char(ctx)
+            self.char_table[code - self.min_code] = len(program)
             program += ctx.program
         verbose_print()
 
-        # テーブル生成
+        # セグメントテーブル生成
+        verbose_print(f'Generating segment table...')
         seg_util = {}
         for inst in program:
             if inst.op == OpCode.LD:
                 ld: LoadOp = inst
-                if ld.seg in seg_util:
-                    seg_util[ld.seg] += 1
+                if ld.seg_data in seg_util:
+                    seg_util[ld.seg_data] += 1
                 else:
-                    seg_util[ld.seg] = 1
+                    seg_util[ld.seg_data] = 1
+        self.seg_table = sorted(seg_util.keys(), key=lambda x: seg_util[x], reverse=True)
+        seg_table_inv = {}
+        for i in range(len(self.seg_table)):
+            seg_table_inv[self.seg_table[i]] = i
+
+        # グリフデータ生成
+        verbose_print(f'Generating glyph data...')
+        self.glyph_data = []
+        for inst in program:
+            if inst.op == OpCode.LD:
+                ld: LoadOp = inst
+                ld.seg_index = seg_table_inv[ld.seg_data]
+            self.glyph_data.append(inst.get_byte())
         
         # 頻出セグメント
         verbose_print(f'Segment Table:')
-        major_segs = sorted(seg_util.keys(), key=lambda x: seg_util[x], reverse=True)
         for seg in self.seg_util:
-            if seg not in major_segs:
-                major_segs.append(seg)
+            if seg not in self.seg_table:
+                self.seg_table.append(seg)
         verbose_print(f'{LOG_INDENT}Index | Bits       | Before | After')
         verbose_print(f'{LOG_INDENT}------+------------+--------+-------')
-        for i in range(len(major_segs)):
-            seg = major_segs[i]
+        for i in range(len(self.seg_table)):
+            seg = self.seg_table[i]
             pre = self.seg_util[seg]
             post = 0
             if seg in seg_util:
@@ -186,7 +213,7 @@ class Png2ArrayContext:
         total_pre = FONT_HEADER_SIZE
         total_post = FONT_HEADER_SIZE
         
-        code_table_size = (self.max_code - self.min_code + 1) * CHAR_TABLE_ENTRY_SIZE
+        code_table_size = char_table_depth * CHAR_TABLE_ENTRY_SIZE
         seg_table_size = len(seg_util.keys())
         total_pre += code_table_size
         total_post += code_table_size
@@ -317,18 +344,127 @@ class Png2ArrayContext:
                 if seg == ctx.last ^ (mask << pos):
                     return [XorOp(width, pos)]
         return []
-        
+    
+    def get_file_name(self, ext: str = None) -> str:
+        if self.output_path:
+            path = self.output_path
+        else:
+            path = self.input_path
+        path = re.sub(r'(\.[^.]*)$', '', path)
+        if ext:
+            return path + '.' + ext
+        else:
+            return path
+    
+    def get_font_name(self) -> str:
+        name = self.name
+        if not name:
+            name = os.path.basename(self.get_file_name())
+            name = os.path.splitext(name)[0]
+        return name
+    
+    def write_includes(self, f, cpp: bool) -> None:
+        f.write('#include <stdint.h>\n')
+        f.write('#include "mamefont/mamefont.hpp"\n')
+        if cpp:
+            hpp_path = os.path.basename(self.get_file_name('hpp'))
+            if self.include_dir:
+                hpp_path = os.path.join(self.include_dir, hpp_path)
+            f.write(f'#include "{hpp_path}"\n')
+            
+        f.write('\n')
+    
+    def write_namespace_start(self, f) -> None:
+        if self.cpp_namespace:
+            f.write(f'namespace {self.cpp_namespace} {{\n\n')
+    
+    def write_namespace_end(self, f) -> None:
+        if self.cpp_namespace:
+            f.write('}\n')
+    
+    def write_array_content(self, f, elem_size: int, id: str, with_content: bool, array: list[int], cols: int = 0):
+        if cols <= 0:
+            cols = 16 // elem_size
+        type_name = {1: 'uint8_t', 2: 'uint16_t', 4: 'uint32_t'}[elem_size]
+        f.write(f'const {type_name} {id}[]')
+        if with_content:
+            f.write(' = {\n')
+            n = len(array)
+            for i_coarse in range(0, n, cols):
+                f.write('  ')
+                for i in range(i_coarse, min(n, i_coarse + cols)):
+                    if elem_size == 1:
+                        f.write(f'0x{array[i]:02x}, ')
+                    elif elem_size == 2:
+                        f.write(f'0x{array[i]:04x}, ')
+                    elif elem_size == 4:
+                        f.write(f'0x{array[i]:08x}, ')
+                f.write('\n')
+            f.write('}')
+        f.write(';\n\n')
+    
+    def write_char_table(self, f, with_content: bool):
+        id = f'{self.get_font_name()}_{ID_POSTFIX_CHAR_TABLE}'
+        self.write_array_content(f, CHAR_TABLE_ENTRY_SIZE, id, with_content, self.char_table)
+    
+    def write_seg_table(self, f, with_content: bool):
+        id = f'{self.get_font_name()}_{ID_POSTFIX_SEG_TABLE}'
+        self.write_array_content(f, 1, id, with_content, self.seg_table)
+    
+    def write_glyph_data(self, f, with_content: bool):
+        id = f'{self.get_font_name()}_{ID_POSTFIX_GLPYH_DATA}'
+        self.write_array_content(f, 1, id, with_content, self.glyph_data)
+    
+    def write_font_inst(self, f, cpp: bool):
+        f.write(f'extern const mamefont::Font {self.get_font_name()}')
+        if cpp:
+            f.write('(\n')
+            f.write(f'  {self.font.height},\n')
+            f.write(f'  {self.max_code - self.min_code + 1},\n')
+            f.write(f'  {self.min_code},\n')
+            f.write(f'  0x00,\n')
+            f.write(f'  {self.get_font_name()}_{ID_POSTFIX_CHAR_TABLE},\n')
+            f.write(f'  {self.get_font_name()}_{ID_POSTFIX_SEG_TABLE},\n')
+            f.write(f'  {self.get_font_name()}_{ID_POSTFIX_GLPYH_DATA}\n')
+            f.write(')')
+        f.write(';\n\n')
+    
+    def write_hpp(self):
+        with open(self.get_file_name('hpp'), 'w') as f:
+            f.write('#pragma once\n\n')
+            self.write_includes(f, False)
+            self.write_namespace_start(f)
+            self.write_font_inst(f, False)
+            self.write_namespace_end(f)
+    
+    def write_cpp(self):
+        with open(self.get_file_name('cpp'), 'w') as f:
+            self.write_includes(f, True)
+            self.write_namespace_start(f)
+            self.write_char_table(f, True)
+            self.write_seg_table(f, True)
+            self.write_glyph_data(f, True)
+            self.write_font_inst(f, True)
+            self.write_namespace_end(f)
+    
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input', required=True)
-    parser.add_argument('-o', '--output', required=True)
+    parser.add_argument('-o', '--output', default=None)
+    parser.add_argument('-n', '--name', default=None)
+    parser.add_argument('--include_dir', default=None)
     parser.add_argument('--cpp_namespace', default=None)
     args = parser.parse_args()
     
     ctx = Png2ArrayContext()
     ctx.input_path = args.input
     ctx.output_path = args.output
+    ctx.include_dir = args.include_dir
+    ctx.name = args.name
     ctx.cpp_namespace = args.cpp_namespace
 
     ctx.load_image()
     ctx.compress()
+    
+    ctx.write_hpp()
+    ctx.write_cpp()

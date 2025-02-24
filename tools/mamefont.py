@@ -2,6 +2,9 @@ import enum
 
 FONT_HEADER_SIZE = 4
 CHAR_TABLE_ENTRY_SIZE = 2
+ID_POSTFIX_CHAR_TABLE = 'char_table'
+ID_POSTFIX_SEG_TABLE = 'seg_table'
+ID_POSTFIX_GLPYH_DATA = 'glyph_data'
 SEG_HEIGHT = 8
 LOG_INDENT = '    '
 
@@ -55,7 +58,7 @@ class InstBase:
     def op_offset(self) -> int:
         return None
     
-    def get_inst_code(self) -> int:
+    def get_byte(self) -> int:
         return self.op.value + self.op_offset()
 
     def score(self) -> int:
@@ -66,7 +69,7 @@ class RawByte(InstBase):
         super().__init__(OpCode.HDR, 0)
         self.value = value
 
-    def get_inst_code(self) -> int:
+    def get_byte(self) -> int:
         return self.value
 
 class SingleOp(InstBase):
@@ -74,12 +77,13 @@ class SingleOp(InstBase):
         super().__init__(op, 1)
 
 class LoadOp(SingleOp):
-    def __init__(self, seg: int):
+    def __init__(self, seg_data: int):
         super().__init__(OpCode.LD)
-        self.seg = seg
+        self.seg_data = seg_data
+        self.seg_index = -1
 
     def op_offset(self):
-        return self.seg
+        return self.seg_index
 
 class XorOp(SingleOp):
     def __init__(self, width: int, pos: int):
