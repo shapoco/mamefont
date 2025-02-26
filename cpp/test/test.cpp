@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
         for (int x = 0; x < glyph.width; x++) {
           uint8_t row = (y / mfnt::SEGMENT_HEIGHT);
           uint8_t seg = buff[row * glyph.width + x];
-          uint8_t bit = (seg << (y % mfnt::SEGMENT_HEIGHT)) & 0x80;
+          uint8_t bit = (seg >> (y % mfnt::SEGMENT_HEIGHT)) & 0x1;
           printf("%s", bit ? "###" : "   ");
         }
         printf("|\n");

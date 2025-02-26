@@ -114,9 +114,9 @@ class Png2Cpp:
                         sreg = 0
                         for i in range(SEG_HEIGHT):
                             pix_y = seg_y + i
-                            sreg <<= 1
+                            sreg >>= 1
                             if pix_y < base_y and is_white(pix[pix_y][seg_x]):
-                                sreg |= 1
+                                sreg |= 0x80
                         data.append(sreg)
                         
                         # セグメントの出現数を数える

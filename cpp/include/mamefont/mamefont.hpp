@@ -30,7 +30,7 @@ struct ExtractContext {
   uint8_t *history;
   const uint8_t *rdPtr;
 
-  void init(GlyphInfo *glyph, uint8_t *buff, uint16_t start = 0, uint16_t end = -1, uint8_t *history = nullptr) {
+  void init(GlyphInfo *glyph, uint8_t *buff, uint16_t start = 0, uint16_t end = 0xffff, uint8_t *history = nullptr) {
     this->glyph = glyph;
     this->buff = buff;
     this->start = start;
@@ -133,9 +133,10 @@ public:
     segTable(segTable), 
     glyphData(glyphData) {}
 
-  Status getGlyph(char c, GlyphInfo *glyph) const {
-    if (c < codeOffset) return Status::CHAR_CODE_OUT_OF_RANGE;
-    uint8_t index = c - codeOffset;
+  Status getGlyph(uint8_t c, GlyphInfo *glyph) const {
+    uint8_t index = c;
+    if (index < codeOffset) return Status::CHAR_CODE_OUT_OF_RANGE;
+    index -= codeOffset;
     if (index >= numChars) return Status::CHAR_CODE_OUT_OF_RANGE;
     uint16_t offset = charTable[index];
     if (offset == GLYPH_OFFSET_DUMMY) return Status::GLYPH_NOT_DEFINED;
@@ -210,6 +211,15 @@ public:
     return Status::SUCCESS;
   }
 
+  Status extractGlyph(uint8_t c, uint8_t *buff, uint8_t *width) const {
+    GlyphInfo glyph;
+    Status ret = getGlyph(c, &glyph);
+    if (ret != Status::SUCCESS) return ret;
+    ExtractContext ctx;
+    ctx.init(&glyph, buff);
+    if (width) *width = glyph.width;
+    return extractGlyph(&ctx);
+  }
   
 };
 
