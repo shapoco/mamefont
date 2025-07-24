@@ -1,162 +1,308 @@
-# mamefont
+# [WIP] MameFont
 
-## Structure
+Compressed font format definitions and tools for small-footprint embedded projects.
 
-|Size [Bytes]|Description|
-|:--|:--|
+"Mame" (まめ, 豆) means "bean(s)" in Japanese.
+
+# Flow
+
+![](./img/flow.svg)
+
+# Format Specification
+
+## Blob Structure
+
+|Size \[Bytes\]|Name|
+|:--:|:--|
 |8|Font Header|
-|`char_table_depth` * 2|Character Table|
-|`seg_table_depth`|Segment Table|
-|(Variable)|Character Data Blocks|
+|`(4 or 2) * glyphTableLen`|Character Table|
+|`lutSize`|Byte Lookup Table (LUT)|
+|(Variable)|Microcode Blocks|
 
 ## Font Header
 
-|Size [Bytes]|Description|
-|:--|:--|
-|4|`font_header_0`|
+A structure that provides information common to the entire font.
 
-### `font_header_0`
-
-|Bit Range|Value|Description|
+|Size \[Bytes\]|Name|Description|
 |:--:|:--|:--|
-|31:24|`font_height`|Font height in pixels|
-|23:8|reserved||
-|15:8|`num_chars`|Number of entry of Character Table|
-|7:0|`code_offset`|Character code offset|
+|1|`formatVersion`|0x01|
+|1|`firstCode`|ASCII code of the first entry of Glyph Table|
+|1|`glyphTableLen - 1`|Number of entries of Glyph Table|
+|1|`lutSize / 4 - 1`|Number of bytes of LUT|
+|1|`fontDimension0`|Dimension of Font|
+|1|`fontDimension1`|Dimension of Font|
+|1|(Reserved)||
+|1|`fontFlags`||
 
-## Character Table Entry
+### `fontDimension0`
 
-|Size [Bytes]|Description|
-|:--|:--|
-|2|`char_table_entry`|
-
-### `char_table_entry`
-
-|Bit Range|Value|Description|
+|Bit Range|Name|Description|
 |:--:|:--|:--|
-|31:24|`font_height`|Font height in pixels|
-|23:8|reserved||
-|15:8|`num_chars`|Number of entry of Character Table|
-|7:0|`code_offset`|Character code offset|
+|7:6|(Reserved)||
+|5:0|`fontHeight - 1`|Height of glyph in pixels|
 
-## Character Data Block
+### `fontDimension1`
 
-|Size [Bytes]|Description|
-|:--|:--|
-|1|Character Header|
-|(Variable)|Microcodes|
+|Bit Range|Name|Description|
+|:--:|:--|:--|
+|7:6|(Reserved)||
+|5:0|`yAdvance - 1`|Vertical spacing in pixels|
 
+### `fontFlags`
 
+|Bit Range|Name|Description|
+|:--:|:--|:--|
+|7|`scanDirection`|0: horizontal, 1: vertical|
+|6|`reverseBitOrder`|0: LSB=nearBit, 1: LSB=farBit|
+|5|`shrinkedGlyphTable`|0: Normal Format, 1: Shrinked Format|
+|4:0|(Reserved)||
+
+![](./img/scan_path.svg)
+
+## Glyph Table
+
+### Normal Table Entry (4 Byte)
+
+|Size \[Bytes\]|Name|Description|
+|:--:|:--|:--|
+|2|`entryPoint`|Offset from start of Microcode Block in bytes|
+|1|`glyphDimension0`|Dimension of glyph bitmap|
+|2|`glyphDimension1`|Dimension of glyph bitmap|
+
+#### `glyphDimension0`
+
+|Bit Range|Name|Description|
+|:--:|:--|:--|
+|7:6|(Reserved)||
+|5:0|`glyphWidth - 1`|Number of pixels of glyph bitmap|
+
+#### `glyphDimension1`
+
+|Bit Range|Name|Description|
+|:--:|:--|:--|
+|7:6|(Reserved)||
+|5:0|`xAdvance - 1`|Horizontal spacing in pixels|
+
+### Shrinked Table Entry (2 Byte)
+
+The Shrink Format of the Glyph Table can be applied when all glyphWidth and xAdvance in
+the font are 16 pixel or less, and the total size of the microcode block is 512 Byte or less.
+In this case, all microcode entry points must be aligned to 2-Byte boundaries.
+
+|Size \[Bytes\]|Name|
+|:--:|:--|:--|
+|1|`entryPoint >> 1`|
+|1|`shrinkedGriphDimension`|
+
+#### `shrinkedGriphDimension`
+
+|Bit Range|Name|Description|
+|:--:|:--|:--|
+|7:4|`xAdvance - 1`|Horizontal spacing in pixels|
+|3:0|`glyphWidth - 1`|Number of pixels of glyph bitmap|
+
+### Missing Glyph
+
+To express that no valid glyph is assigned to a character code, the first two bytes of the Glyph Table Entry should be 0xFFFF.
+
+This also means:
+
+- If not a Shrinked Glyph Table: entryPoint=0xFFFF cannot be used.
+- If a Shrinked Glyph Table: the combination of entryPoint=0x1FE, glyphWidth=16, xAdvance=16 cannot be used.
+
+Be careful as these can lead to corner case issues.
+
+## Lookup Table
+
+If the total size does not reach a 2-Byte boundary, a dummy entry must be appended.
+`lutSize` includes this dummy byte.
+
+## Microcode Block
+
+|Size \[Bytes\]|Description|
+|:--:|:--|
+|(Variable)|Array of instructions|
 
 ## Instruction Set
 
-|Value Range|Mnemonic|Description|
-|:---|:---|:---|
-|0x00-3f|`LD`|Load from Table|
-|0x40-4f|`SLC`|Shift Left and Clear LSB|
-|0x50-5f|`SLS`|Shift Left and Set LSB|
-|0x60-6f|`SRC`|Shift Right and Clear MSB|
-|0x70-7f|`SRS`|Shift Right and Set MSB|
-|0x80-bf|`CPY`|Copy Sequence|
-|0xc0-df|`REV`|Reverse Sequence|
-|0xe0-ef|`RPT`|Repeat Previous Segment|
-|0xf0-f7|`XOR`|XOR Previous Segment|
-|0xff|-|(Reserved)|
+|Byte0|Byte1|Mnemonic|Description|
+|:--:|:--:|:--:|:--|
+|0x00-3F|-|`LUS`|Single Lookup|
+|0x40-4F|-|`SLC`|Shift Left Previous Byte and Clear Lower Bits|
+|0x50-5F|-|`SLS`|Shift Left Previous Byte and Set Lower Bits|
+|0x60-6F|-|`SRC`|Shift Right Previous Byte and Clear Upper Bits|
+|0x70-7F|-|`SRS`|Shift Right Previous Byte and Set Upper Bits|
+|0x80-9F|-|`LUD`|Double Lookup|
+|0xA0|Byte Data|`LDI`|Load Immediate|
+|0xA1-BF|-|`CPY`|Copy Previous Sequence|
+|0xC0||-|(Reserved)|
+|0xC1-C7|-|`REV`|Reverse Previous Sequence|
+|0xC8||-|(Reserved)|
+|0xC9-CF|-|`REV`|Reverse Previous Sequence|
+|0xD0||-|(Reserved)|
+|0xD1-D7|-|`REV`|Reverse Previous Sequence|
+|0xD8||-|(Reserved)|
+|0xD9-DF|-|`REV`|Reverse Previous Sequence|
+|0xE0-EF|-|`RPT`|Repeat Previous Byte|
+|0xF0-FE|-|`XOR`|XOR Previous Byte with Mask|
+|0xff||-|(Reserved)|
 
-### Load from Table (`LD`)
+### Single Lookup (`LUS`)
 
-|Bit Range|Value|
-|:--:|:--|
-|7:6|0b00|
-|5:0|`index`|
+|Byte|Bit Range|Value|
+|:--:|:--:|:--|
+|1st.|7:6|0b00|
+||5:0|`index`|
+
+The state machine simply copies the byte in the LUT to the glyph buffer. If reverseBitOrder=1 is set, the byte data in the LUT must also have its bit order reversed.
 
 ```c
-buff[pos++] = table[index];
+buff[cursor++] = lut[index];
 ```
 
-### Shift and Clear/Set (`SLC`, `SLS`, `SRC`, `SRS`)
+![](./img/inst_lus.svg)
 
-|Bit Range|Value|
-|:--:|:--|
-|7:6|0b01|
-|5|`shift_dir` (0: Left, 1: Right)|
-|4|`post_op` (0: Clear, 1: Set)|
-|3|`shift_size - 1`|
-|2:0|`len - 1`|
+### Sequential Double Lookup (`LUD`)
+
+|Byte|Bit Range|Value|
+|:--:|:--:|:--|
+|1st.|7:5|0b100|
+||4|`step`|
+||3:0|`index`|
 
 ```c
-for (int i = 0; i < len; i++) {
+buff[cursor++] = lut[index];
+buff[cursor++] = lut[index + step];
+```
+
+![](./img/inst_lud.svg)
+
+### Load Immediate (`LDI`)
+
+|Byte|Bit Range|Value|
+|:--:|:--:|:--|
+|1st.|7:0|0xA0|
+|2nd.|7:0|Byte Data|
+
+The state machine simply copies the second byte of the instruction code into the glyph buffer. If reverseBitOrder=1 is set, the byte data in the instruction code must also have its bit order reversed.
+
+```c
+buff[cursor++] = microcode[pc++];
+```
+
+![](./img/inst_ldi.svg)
+
+### Repeat Previous Byte (`RPT`)
+
+|Byte|Bit Range|Value|
+|:--:|:--:|:--|
+|1st.|7:4|0b1110|
+||3:0|`repeat_count - 1`|
+
+```c
+memset(buff + cursor, buff[cursor - 1], repeat_count);
+cursor += repeat_count;
+```
+
+![](./img/inst_rpt.svg)
+
+### Shift Previous Byte and Clear/Set Lower/Upper Bits (`SLC`, `SLS`, `SRC`, `SRS`)
+
+|Byte|Bit Range|Value|
+|:--:|:--:|:--|
+|1st.|7:6|0b01|
+||5|`shift_dir` (0: Left, 1: Right)|
+||4|`post_op` (0: Clear, 1: Set)|
+||3:2|`shift_size - 1`|
+||1:0|`repeat_count - 1`|
+
+`SLx` shifts the byte towards the Near Bit direction, `SRx` does the opposite.
+
+|`scanDirection`|`reverseBitOrder`|`SLx` Shift Direction|`SRx` Shift Direction|
+|:--:|:--:|:--:|:--:|
+|0 (Horizontal)|0 (Normal)|Up|Down|
+|0 (Horizontal)|1 (Reversed)|Down|Up|
+|1 (Vertical)|0 (Normal)|Left|Right|
+|1 (Vertical)|1 (Reversed)|Right|Left|
+
+```c
+uint8_t modifier = (1 << shift_size) - 1;
+if (shift_dir != 0) modifier <<= (8 - shift_size);
+if (post_op == 0) modifier = ~modifier;
+for (int i = 0; i < repeat_count; i++) {
     if (shift_dir == 0) {
-        buff[pos] = buff[pos - 1] << shift_size;
-        if (post_op == 0) {
-            buff[pos] &= 0xfe;
-        }
-        else {
-            buff[pos] |= 0x01;
-        }
+        buff[cursor] = buff[cursor - 1] << shift_size;
     }
     else {
-        buff[pos] = buff[pos - 1] >> shift_size;
-        if (post_op == 0) {
-            buff[pos] &= 0x7f;
-        }
-        else {
-            buff[pos] |= 0x80;
-        }
+        buff[cursor] = buff[cursor - 1] >> shift_size;
     }
-    pos++;
+    if (post_op == 0) {
+        buff[cursor] &= modifier;
+    }
+    else {
+        buff[cursor] |= modifier;
+    }
+    cursor++;
 }
 ```
 
-### Copy Sequence (`CPY`)
+![](./img/inst_sxx.svg)
 
-|Bit Range|Value|
-|:--:|:--|
-|7:6|0b10|
-|5:4|`offset`|
-|3:0|`len - 1`|
+### XOR Previous Byte with Mask (`XOR`)
+
+|Byte|Bit Range|Value|
+|:--:|:--:|:--|
+|1st.|7:4|0b1111|
+||3|`mask_width - 1`|
+||2:0|`mask_pos`|
+
+Combination of `mask_width=2` and `mask_pos=7` (0xFF) is reserved.
 
 ```c
-memcpy(buff + pos, buff + (pos - len - offset), len);
-pos += len;
+int mask = (1 << mask_width) - 1;
+buff[cursor++] = buff[cursor - 1] ^ (mask << mask_pos);
 ```
 
-### Reverse Sequence (`REV`)
+![](./img/inst_xor.svg)
 
-|Bit Range|Value|
-|:--:|:--|
-|7:5|0b110|
-|4|`offset - 1`|
-|3:0|`len - 1`|
+### Copy Previous Sequence (`CPY`)
+
+|Byte|Bit Range|Value|
+|:--:|:--:|:--|
+|1st.|7:5|0b101|
+||4:3|`offset`|
+||2:0|`length - 1`|
+
+Combination of `offset=0` and `length=1` (0xA0) is reserved for `LDI`.
 
 ```c
-for (int i = 0; i < len; i++) {
-    buff[pos + i] = buff[pos - offset - i];
+memcpy(buff + cursor, buff + (cursor - length - offset), length);
+cursor += length;
+```
+
+![](./img/inst_cpy.svg)
+
+### Reverse Previous Sequence (`REV`)
+
+|Byte|Bit Range|Value|
+|:--:|:--:|:--|
+|1st.|7:5|0b110|
+||4:3|`offset`|
+||2:0|`length - 1`|
+
+`length=1` (0xC0, 0xC8, 0xD0, 0xD8) is reserved for future use.
+
+```c
+for (int i = 0; i < length; i++) {
+    buff[cursor + i] = buff[cursor - offset - i];
 }
-pos += len;
+cursor += length;
 ```
 
-### Repeat Previous Segment (`RPT`)
+![](./img/inst_rev.svg)
 
-|Bit Range|Value|
-|:--:|:--|
-|7:4|0b1110|
-|3:0|`len - 1`|
+# Rendering
 
-```c
-memset(buff + pos, buff[pos - 1], len);
-pos += len;
-```
+## Buffer Model
 
-### XOR Previous Segment (`XOR`)
-
-|Bit Range|Value|
-|:--:|:--|
-|7:4|0b1111|
-|3|`width - 1`|
-|2:0|`bit`|
-
-```c
-int mask = width == 1 ? 0x01 : 0x03;
-buff[pos++] = buff[pos - 1] ^ (mask << bit);
-```
+![](./img/buffer_model.svg)

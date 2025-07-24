@@ -5,3 +5,6 @@ tmp.*
 build/
 a.out
 *.o
+
+cpp/Makefile
+cpp/test/
