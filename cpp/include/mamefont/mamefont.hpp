@@ -517,18 +517,6 @@ class Renderer {
 };
 
 Status drawChar(const Font &font, uint8_t c, const GlyphBuffer &buff,
-                int8_t *glyphWidth = nullptr, int8_t *xAdvance = nullptr) {
-  Glyph glyph;
-  Status status = font.getGlyph(c, &glyph);
-  if (status != Status::SUCCESS) return status;
-
-  if (!glyph.isValid()) return Status::GLYPH_NOT_DEFINED;
-
-  if (glyphWidth) *glyphWidth = glyph.width();
-  if (xAdvance) *xAdvance = glyph.xAdvance();
-
-  Renderer renderer(font);
-  return renderer.render(glyph, buff);
-}
+                int8_t *glyphWidth = nullptr, int8_t *xAdvance = nullptr);
 
 }  // namespace mamefont

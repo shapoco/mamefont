@@ -6,13 +6,15 @@ REPO_DIR := ../../..
 SRC_DIR := src
 INC_DIR := include
 BUILD_DIR := build
+MAMEFONT_BUILD_DIR := $(BUILD_DIR)/mamefont
 FONT_BUILD_DIR := $(BUILD_DIR)/font
 TOOLS_DIR := ../tools
 
 MAMEFONT_INC_DIR := $(REPO_DIR)/cpp/include
+MAMEFONT_SRC_DIR := $(REPO_DIR)/cpp/src
 
 FONT_INC_DIR := ../../fonts/cpp/include
-FONT_SRC_DIR := ../../fonts/cpp/src/shapofont
+FONT_SRC_DIR := ../../fonts/cpp/src
 
 MCU := attiny402
 F_CPU := 20000000
@@ -21,15 +23,17 @@ CXX := $(AVR_GCC_PATH)/bin/avr-g++
 OBJCOPY := $(AVR_GCC_PATH)/bin/avr-objcopy
 AVR_SIZE := $(AVR_GCC_PATH)/bin/avr-size
 
-CPP_LIST := $(wildcard $(SRC_DIR)/*.cpp)
 HPP_LIST := $(wildcard $(INC_DIR)/*.hpp)
+CPP_LIST := $(wildcard $(SRC_DIR)/*.cpp)
 OBJ_LIST := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(CPP_LIST)) 
 
 MAMEFONT_HPP_LIST := $(wildcard $(MAMEFONT_INC_DIR)/mamefont/*.hpp)
+MAMEFONT_CPP_LIST := $(wildcard $(MAMEFONT_SRC_DIR)/*.cpp)
+MAMEFONT_OBJ_LIST := $(patsubst $(MAMEFONT_SRC_DIR)/%.cpp,$(MAMEFONT_BUILD_DIR)/%.o,$(MAMEFONT_CPP_LIST))
 
 FONT_CPP_LIST := 
-FONT_CPP_LIST += $(FONT_SRC_DIR)/ShapoSansP_s11c09w2a1.cpp
-FONT_CPP_LIST += $(FONT_SRC_DIR)/ShapoSansDigitP_s16c14w2.cpp
+FONT_CPP_LIST += $(FONT_SRC_DIR)/ShapoSansP_s11c09w2a1_hs.cpp
+FONT_CPP_LIST += $(FONT_SRC_DIR)/ShapoSansDigitP_s16c14w2_hs.cpp
 
 FONT_HPP_LIST := $(wildcard $(FONT_INC_DIR)/shapofont/*.hpp)
 FONT_OBJ_LIST := $(patsubst $(FONT_SRC_DIR)/%.cpp,$(FONT_BUILD_DIR)/%.o,$(FONT_CPP_LIST))
@@ -64,12 +68,16 @@ build: $(HEX)
 $(HEX): $(ELF) $(EXTRA_DEPENDENCIES)
 	$(OBJCOPY) -j .text -j .data -j .rodata -O ihex $< $@
 
-$(ELF): $(OBJ_LIST) $(FONT_OBJ_LIST) $(EXTRA_DEPENDENCIES)
-	$(CXX) $(LDFLAGS) -o $@ $(OBJ_LIST) $(FONT_OBJ_LIST)
+$(ELF): $(OBJ_LIST) $(MAMEFONT_OBJ_LIST) $(FONT_OBJ_LIST) $(EXTRA_DEPENDENCIES)
+	$(CXX) $(LDFLAGS) -o $@ $(OBJ_LIST) $(MAMEFONT_OBJ_LIST) $(FONT_OBJ_LIST)
 	$(AVR_SIZE) $(ELF)
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp $(EXTRA_DEPENDENCIES)
 	@mkdir -p $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(MAMEFONT_BUILD_DIR)/%.o: $(MAMEFONT_SRC_DIR)/%.cpp $(EXTRA_DEPENDENCIES)
+	@mkdir -p $(MAMEFONT_BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(FONT_BUILD_DIR)/%.o: $(FONT_SRC_DIR)/%.cpp $(EXTRA_DEPENDENCIES)
