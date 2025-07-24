@@ -1,10 +1,11 @@
 __pycache__/
 tmp.*/
 tmp.*
-.vscode/
 build/
+bin/
 a.out
 *.o
+.vscode/settings.json
 
 cpp/Makefile
 cpp/test/

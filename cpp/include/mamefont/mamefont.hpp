@@ -80,7 +80,13 @@ class Font {
   }
 
   MAMEFONT_ALWAYS_INLINE const bool verticalScan() const {
+#ifdef MAMEFONT_HORIZONTAL_SCAN_ONLY
+    return false;
+#elifdef MAMEFONT_VERTICAL_SCAN_ONLY
+    return true;
+#else
     return blob[OFST_FONT_FLAGS] & 0x80;
+#endif
   }
 
   MAMEFONT_ALWAYS_INLINE const Glyph glyphTableEntry(uint8_t index) const {
@@ -253,7 +259,15 @@ class Renderer {
     this->microcode = font.blob + font.microCodeOffset();
     this->fontHeight = font.fontHeight();
 
-    if (flags & FontFlags::VERTICAL_SCAN) {
+#ifdef MAMEFONT_HORIZONTAL_SCAN_ONLY
+    bool verticalScan = false;
+#elifdef MAMEFONT_VERTICAL_SCAN_ONLY
+    bool verticalScan = true;
+#else
+    bool verticalScan = flags & FontFlags::VERTICAL_SCAN;
+#endif
+
+    if (verticalScan) {
       rule.fragsPerLane = fontHeight;
       rule.laneStride = 1;
     } else {
@@ -262,12 +276,20 @@ class Renderer {
     }
   }
 
-  Status render(Glyph &glyph, GlyphBuffer &buff) {
+  Status render(Glyph &glyph, const GlyphBuffer &buff) {
     // buffStride = buff.stride;
     buffData = buff.data;
 
+#ifdef MAMEFONT_HORIZONTAL_SCAN_ONLY
+    bool verticalScan = false;
+#elifdef MAMEFONT_VERTICAL_SCAN_ONLY
+    bool verticalScan = true;
+#else
+    bool verticalScan = flags & FontFlags::VERTICAL_SCAN;
+#endif
+
     int8_t glyphWidth = glyph.width();
-    if (flags & FontFlags::VERTICAL_SCAN) {
+    if (verticalScan) {
       rule.fragStride = buff.stride;
       rule.lanesPerGlyph = (glyphWidth + 7) / 8;
     } else {
@@ -487,9 +509,26 @@ class Renderer {
   }
 
   MAMEFONT_ALWAYS_INLINE void stamp() const {
+#ifdef MAMEFONT_STM_VERBOSE
     printf("    ofst=%4d, last=0x%02X ", (int)writeCursor.offset,
            (int)lastFragment);
+#endif
   }
 };
+
+Status drawChar(const Font &font, uint8_t c, const GlyphBuffer &buff,
+                int8_t *glyphWidth = nullptr, int8_t *xAdvance = nullptr) {
+  Glyph glyph;
+  Status status = font.getGlyph(c, &glyph);
+  if (status != Status::SUCCESS) return status;
+
+  if (!glyph.isValid()) return Status::GLYPH_NOT_DEFINED;
+
+  if (glyphWidth) *glyphWidth = glyph.width();
+  if (xAdvance) *xAdvance = glyph.xAdvance();
+
+  Renderer renderer(font);
+  return renderer.render(glyph, buff);
+}
 
 }  // namespace mamefont
