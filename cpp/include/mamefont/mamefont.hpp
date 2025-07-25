@@ -63,12 +63,12 @@ class Font {
     return blob[OFST_FIRST_CODE];
   }
 
-  MAMEFONT_ALWAYS_INLINE uint8_t glyphTableLen() const {
+  MAMEFONT_ALWAYS_INLINE uint8_t numGlyphs() const {
     return blob[OFST_GLYPH_TABLE_LEN] + 1;
   }
 
   MAMEFONT_ALWAYS_INLINE uint8_t lastCode() const {
-    return firstCode() + glyphTableLen() - 1;
+    return firstCode() + numGlyphs() - 1;
   }
 
   MAMEFONT_ALWAYS_INLINE uint8_t lutSize() const {
@@ -77,6 +77,10 @@ class Font {
 
   MAMEFONT_ALWAYS_INLINE uint8_t fontHeight() const {
     return (blob[OFST_FONT_DIMENSION_0] & 0x3f) + 1;
+  }
+
+  MAMEFONT_ALWAYS_INLINE uint8_t maxGlyphWidth() const {
+    return (blob[OFST_FONT_DIMENSION_2] & 0x3f) + 1;
   }
 
   MAMEFONT_ALWAYS_INLINE const bool verticalFragment() const {
@@ -109,9 +113,9 @@ class Font {
 
   MAMEFONT_ALWAYS_INLINE int16_t lutOffset() const {
     if (isShrinkedGlyphTable()) {
-      return OFST_GLYPH_TABLE + glyphTableLen() * 2;
+      return OFST_GLYPH_TABLE + (numGlyphs() << 1);
     } else {
-      return OFST_GLYPH_TABLE + glyphTableLen() * 4;
+      return OFST_GLYPH_TABLE + (numGlyphs() << 2);
     }
   }
 
@@ -124,25 +128,10 @@ class Font {
     return blob + microCodeOffset() + glyph.entryPoint();
   }
 
-  const Glyph getWidestGlyph() const {
-    uint8_t maxWidth = 0;
-    Glyph maxGlyph;
-    for (uint8_t i = 0; i < glyphTableLen(); i++) {
-      const Glyph glyph = glyphTableEntry(i);
-      if (!glyph.isValid()) continue;
-      uint8_t width = glyph.width();
-      if (width > maxWidth) {
-        maxWidth = width;
-        maxGlyph = glyph;
-      }
-    }
-    return maxGlyph;
-  }
-
   int16_t getRequiredGlyphBufferSize(const Glyph *glyph,
-                                     int16_t *stride) const {
-    int16_t w = glyph->width();
-    int16_t h = fontHeight();
+                                     int8_t *stride) const {
+    int8_t w = glyph->width();
+    int8_t h = fontHeight();
     if (verticalFragment()) {
       *stride = w;
       return w * ((h + 7) / 8);
@@ -152,9 +141,16 @@ class Font {
     }
   }
 
-  int16_t getRequiredGlyphBufferSize(int16_t *stride) const {
-    const Glyph maxGlyph = getWidestGlyph();
-    return getRequiredGlyphBufferSize(&maxGlyph, stride);
+  int16_t getRequiredGlyphBufferSize(int8_t *stride) const {
+    int8_t w = maxGlyphWidth();
+    int8_t h = fontHeight();
+    if (verticalFragment()) {
+      *stride = w;
+      return w * ((h + 7) / 8);
+    } else {
+      *stride = ((w + 7) / 8);
+      return *stride * h;
+    }
   }
 };
 

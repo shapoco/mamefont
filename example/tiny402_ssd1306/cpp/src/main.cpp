@@ -9,7 +9,7 @@
 
 namespace mf = mamefont;
 
-static constexpr uint8_t MAX_GLYPH_WIDTH = 24;
+static constexpr uint8_t MAX_GLYPH_WIDTH = 32;
 static constexpr uint8_t MAX_GLYPH_ROWS = 2;
 
 static constexpr uint8_t DISP_W = 128;
@@ -58,6 +58,7 @@ int main() {
   display.begin();
   display.fillRect(0, 0, DISP_W, DISP_H / 8, 0x00);
 
+  // Setup GlyphBuffer
   glyphBuff.data = buff;
   glyphBuff.stride = MAX_GLYPH_WIDTH;
 
@@ -69,6 +70,7 @@ int main() {
 
   uint32_t number = 0;
 
+  // Animation
   while (1) {
     drawString(ShapoSansP_s11c09w2a1, text1, x1, 0);
     x1 -= 1;

@@ -1,12 +1,14 @@
 # [WIP] MameFont
 
-Compressed font format definitions and tools for small-footprint embedded projects.
+Compressed font format specification and library for tiny-footprint embedded projects.
 
 "Mame" (まめ, 豆) means "bean(s)" in Japanese.
 
-# Flow
+# Concept
 
-![](./img/flow.svg)
+![](./img/concept.svg)
+
+![](./img/scope.svg)
 
 # Format Specification
 
@@ -15,7 +17,7 @@ Compressed font format definitions and tools for small-footprint embedded projec
 |Size \[Bytes\]|Name|
 |:--:|:--|
 |8|Font Header|
-|`(4 or 2) * glyphTableLen`|Character Table|
+|(4 or 2) \* `numGlyphs`|Character Table|
 |`lutSize`|Fragment Lookup Table (LUT)|
 |(Variable)|Microcode Blocks|
 
@@ -23,83 +25,79 @@ Compressed font format definitions and tools for small-footprint embedded projec
 
 A structure that provides information common to the entire font.
 
-|Size \[Bytes\]|Name|Description|
+|Size \[Bytes\]|Value|Description|
 |:--:|:--|:--|
 |1|`formatVersion`|0x01|
+|1|`fontFlags`|Format Flags|
 |1|`firstCode`|ASCII code of the first entry of Glyph Table|
-|1|`glyphTableLen - 1`|Number of entries of Glyph Table|
-|1|`lutSize - 1`|Number of bytes of LUT|
-|1|`fontDimension0`|Dimension of Font|
-|1|`fontDimension1`|Dimension of Font|
-|1|(Reserved)||
-|1|`fontFlags`||
-
-### `fontDimension0`
-
-|Bit Range|Name|Description|
-|:--:|:--|:--|
-|7:6|(Reserved)||
-|5:0|`fontHeight - 1`|Height of glyph in pixels|
-
-### `fontDimension1`
-
-|Bit Range|Name|Description|
-|:--:|:--|:--|
-|7:6|(Reserved)||
-|5:0|`yAdvance - 1`|Vertical spacing in pixels|
+|1|`numGlyphs` - 1|`numGlyphs` is number of entries of Glyph Table|
+|1|`lutSize` - 1|`lutSize` is number of entries of LUT.<br>2 ≦ `lutSize` ≦ 64, and multiple of 2|
+|1|`fontDimension[0]`|Dimension of Font|
+|1|`fontDimension[1]`|Dimension of Font|
+|1|`fontDimension[2]`|Dimension of Font|
 
 ### `fontFlags`
 
-|Bit Range|Name|Description|
+`fontFlags` provides basic flags for the format of the font file.
+
+|Bit Range|Value|Description|
 |:--:|:--|:--|
-|7|`verticalFragment`|0: Horizontal Fragment, 1: Vertical Fragment|
-|6|`msb1st`|0: LSB=Near Pixel, 1: LSB=Far Pixel|
-|5|`shrinkedGlyphTable`|0: Normal Format, 1: Shrinked Format|
+|7|`verticalFragment`|0: Horizontal Fragment,<br>1: Vertical Fragment|
+|6|`msb1st`|0: LSB=Near Pixel,<br>1: LSB=Far Pixel|
+|5|`shrinkedGlyphTable`|0: Normal Format,<br>1: Shrinked Format|
 |4:0|(Reserved)||
 
 ![](./img/frag_shape.svg)
+
+### `fontDimension`
+
+|Index|Bit Range|Value|Description|
+|:--:|:--:|:--|:--|
+|\[0\]|7:6|(Reserved)||
+||5:0|`fontHeight` - 1|`fontHeight` is height of glyph in pixels|
+|\[1\]|7:6|(Reserved)||
+||5:0|`yAdvance` - 1|`yAdvance` is the distance in pixels from the top of the current line to the top of the next line|
+|\[2\]|7:6|(Reserved)||
+||5:0|`maxGlyphWidth` - 1|`maxGlyphWidth` is `glyphWidth` value of widest glyph in the font|
+
+`yAdvance` may be smaller than `fontHeight`, but whether it is rendered as intended by the font designer depends on the implementation of the graphics engine.
 
 ## Glyph Table
 
 ### Normal Table Entry (4 Byte)
 
-|Size \[Bytes\]|Name|Description|
+|Size \[Bytes\]|Value|Description|
 |:--:|:--|:--|
 |2|`entryPoint`|Offset from start of Microcode Block in bytes|
-|1|`glyphDimension0`|Dimension of glyph bitmap|
-|1|`glyphDimension1`|Dimension of glyph bitmap|
+|1|`glyphDimension[0]`|Dimension of the glyph|
+|1|`glyphDimension[1]`|Dimension of the glyph|
 
-#### `glyphDimension0`
+#### `glyphDimension`
 
-|Bit Range|Name|Description|
-|:--:|:--|:--|
-|7:6|(Reserved)||
-|5:0|`glyphWidth - 1`|Number of pixels of glyph bitmap|
+|Index|Bit Range|Value|Description|
+|:--:|:--:|:--|:--|
+|\[0\]|7:6|(Reserved)||
+||5:0|`glyphWidth` - 1|`glyphWidth` is glyph width in pixels|
+|\[1\]|7:6|(Reserved)||
+||5:0|`xAdvance` - 1|`xAdvance` is the distance in pixels from the left edge of the current character to the left edge of the next character|
 
-#### `glyphDimension1`
-
-|Bit Range|Name|Description|
-|:--:|:--|:--|
-|7:6|(Reserved)||
-|5:0|`xAdvance - 1`|Horizontal spacing in pixels|
+`xAdvance` may be smaller than `glyphWidth`, but whether it is rendered as intended by the font designer depends on the implementation of the graphics engine.
 
 ### Shrinked Table Entry (2 Byte)
 
-The Shrinked Format of the Glyph Table can be applied when all glyphWidth and xAdvance in
-the font are 16 pixel or less, and the total size of the microcode block is 512 Byte or less.
-In this case, all microcode entry points must be aligned to 2-Byte boundaries.
+The Shrinked Format of the Glyph Table can be applied when all glyphWidth and xAdvance in the font are 16 pixel or less, and the total size of the microcode block is 512 Byte or less. In this case, all microcode entry points must be aligned to 2-Byte boundaries.
 
-|Size \[Bytes\]|Name|
-|:--:|:--|
-|1|`entryPoint >> 1`|
-|1|`shrinkedGriphDimension`|
-
-#### `shrinkedGriphDimension`
-
-|Bit Range|Name|Description|
+|Size \[Bytes\]|Value|Description|
 |:--:|:--|:--|
-|7:4|`xAdvance - 1`|Horizontal spacing in pixels|
-|3:0|`glyphWidth - 1`|Number of pixels of glyph bitmap|
+|1|`entryPoint` &gt;&gt; 1|The value of entryPoint divided by 2. The true value of entryPoint must be a multiple of 2.|
+|1|`packedGriphDimension`|Dimension of the glyph|
+
+#### `packedGriphDimension`
+
+|Bit Range|Value|Description|
+|:--:|:--|:--|
+|7:4|`xAdvance` - 1|See description of Normal Table Entry.|
+|3:0|`glyphWidth` - 1|See description of Normal Table Entry.|
 
 ### Missing Glyph
 
@@ -115,7 +113,7 @@ Be careful as these can lead to corner case issues.
 ## Lookup Table
 
 If the total size does not reach a 2-Byte boundary, a dummy byte must be appended.
-`lutSize` includes this dummy byte.
+The value of `lutSize` includes this dummy byte.
 
 ## Microcode Block
 
@@ -152,11 +150,13 @@ If the total size does not reach a 2-Byte boundary, a dummy byte must be appende
 
 The state machine simply copies the fragment in the LUT to the glyph buffer. If msb1st=1 is set, the fragments in the LUT must also be MSB 1st.
 
+![](./img/inst_lus.svg)
+
+#### Pseudo Code
+
 ```c
 buff[cursor++] = lut[index];
 ```
-
-![](./img/inst_lus.svg)
 
 ### Sequential Double Lookup (`LUD`)
 
@@ -166,12 +166,14 @@ buff[cursor++] = lut[index];
 ||4|`step`|
 ||3:0|`index`|
 
+![](./img/inst_lud.svg)
+
+#### Pseudo Code
+
 ```c
 buff[cursor++] = lut[index];
 buff[cursor++] = lut[index + step];
 ```
-
-![](./img/inst_lud.svg)
 
 ### Load Immediate (`LDI`)
 
@@ -182,57 +184,66 @@ buff[cursor++] = lut[index + step];
 
 The state machine simply copies the second byte of the instruction code into the glyph buffer. If msb1st=1 is set, the fragment in the instruction code must also be MSB 1st.
 
-```c
-buff[cursor++] = microcode[pc++];
-```
-
 ![](./img/inst_ldi.svg)
+
+#### Pseudo Code
+
+```c
+buff[cursor++] = microcode[programCounter++];
+```
 
 ### Repeat Previous Fragment (`RPT`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
 |1st.|7:4|0b1110|
-||3:0|`repeat_count - 1`|
-
-```c
-memset(buff + cursor, buff[cursor - 1], repeat_count);
-cursor += repeat_count;
-```
+||3:0|`repeatCount` - 1|
 
 ![](./img/inst_rpt.svg)
 
+#### Pseudo Code
+
+```c
+memset(buff + cursor, buff[cursor - 1], repeatCount);
+cursor += repeatCount;
+```
 ### Shift Previous Fragment and Clear/Set Lower/Upper Bits (`SLC`, `SLS`, `SRC`, `SRS`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
 |1st.|7:6|0b01|
-||5|`shift_dir` (0: Left, 1: Right)|
-||4|`post_op` (0: Clear, 1: Set)|
-||3:2|`shift_size - 1`|
-||1:0|`repeat_count - 1`|
+||5|`shiftDir` (0: Left, 1: Right)|
+||4|`postOp` (0: Clear, 1: Set)|
+||3:2|`shiftSize` - 1|
+||1:0|`repeatCount` - 1|
 
-`SLx` shifts the fragment towards the Near Bit direction, `SRx` does the opposite.
+`SLx` shifts the fragment towards the LSB direction, `SRx` does the opposite.
 
-|`scanDirection`|`reverseBitOrder`|`SLx` Shift Direction|`SRx` Shift Direction|
+![](./img/inst_sxx.svg)
+
+#### Visual direction of pixel movement
+
+|`verticalFragment`|`msb1st`|`SLC`, `SLS`|`SRC`, `SRS`|
 |:--:|:--:|:--:|:--:|
-|0 (Horizontal)|0 (Normal)|Up|Down|
-|0 (Horizontal)|1 (Reversed)|Down|Up|
-|1 (Vertical)|0 (Normal)|Left|Right|
-|1 (Vertical)|1 (Reversed)|Right|Left|
+|0 (Horizontal)|0 (LSB first)|Right|Left|
+|0 (Horizontal)|1 (MSB first)|Left|Right|
+|1 (Vertical)|0 (LSB first)|Down|Up|
+|1 (Vertical)|1 (MSB first)|Up|Down|
+
+#### Pseudo Code
 
 ```c
-uint8_t modifier = (1 << shift_size) - 1;
-if (shift_dir != 0) modifier <<= (8 - shift_size);
-if (post_op == 0) modifier = ~modifier;
-for (int i = 0; i < repeat_count; i++) {
-    if (shift_dir == 0) {
-        buff[cursor] = buff[cursor - 1] << shift_size;
+uint8_t modifier = (1 << shiftSize) - 1;
+if (shiftDir != 0) modifier <<= (8 - shiftSize);
+if (postOp == 0) modifier = ~modifier;
+for (int i = 0; i < repeatCount; i++) {
+    if (shiftDir == 0) {
+        buff[cursor] = buff[cursor - 1] << shiftSize;
     }
     else {
-        buff[cursor] = buff[cursor - 1] >> shift_size;
+        buff[cursor] = buff[cursor - 1] >> shiftSize;
     }
-    if (post_op == 0) {
+    if (postOp == 0) {
         buff[cursor] &= modifier;
     }
     else {
@@ -242,8 +253,6 @@ for (int i = 0; i < repeat_count; i++) {
 }
 ```
 
-![](./img/inst_sxx.svg)
-
 ### XOR Previous Fragment with Mask (`XOR`)
 
 |Byte|Bit Range|Value|
@@ -252,14 +261,16 @@ for (int i = 0; i < repeat_count; i++) {
 ||3|`mask_width - 1`|
 ||2:0|`mask_pos`|
 
-Combination of `mask_width=2` and `mask_pos=7` (0xFF) is reserved.
+Combination of `mask_width=2` and `mask_pos=7` (0xFF) is reserved for other instruction or future use.
+
+![](./img/inst_xor.svg)
+
+#### Pseudo Code
 
 ```c
 int mask = (1 << mask_width) - 1;
 buff[cursor++] = buff[cursor - 1] ^ (mask << mask_pos);
 ```
-
-![](./img/inst_xor.svg)
 
 ### Copy Previous Sequence (`CPY`)
 
@@ -267,16 +278,18 @@ buff[cursor++] = buff[cursor - 1] ^ (mask << mask_pos);
 |:--:|:--:|:--|
 |1st.|7:5|0b101|
 ||4:3|`offset`|
-||2:0|`length - 1`|
+||2:0|`length` - 1|
 
-Combination of `offset=0` and `length=1` (0xA0) is reserved.
+Combination of `offset=0` and `length=1` (0xA0) is reserved for other instruction or future use.
+
+![](./img/inst_cpy.svg)
+
+#### Pseudo Code
 
 ```c
 memcpy(buff + cursor, buff + (cursor - length - offset), length);
 cursor += length;
 ```
-
-![](./img/inst_cpy.svg)
 
 ### Reverse Previous Sequence (`REV`)
 
@@ -284,9 +297,13 @@ cursor += length;
 |:--:|:--:|:--|
 |1st.|7:5|0b110|
 ||4:3|`offset`|
-||2:0|`length - 1`|
+||2:0|`length` - 1|
 
-`length=1` (0xC0, 0xC8, 0xD0, 0xD8) is reserved.
+`length=1` (0xC0, 0xC8, 0xD0, 0xD8) is reserved for other instruction or future use.
+
+![](./img/inst_rev.svg)
+
+#### Pseudo Code
 
 ```c
 for (int i = 0; i < length; i++) {
@@ -294,8 +311,6 @@ for (int i = 0; i < length; i++) {
 }
 cursor += length;
 ```
-
-![](./img/inst_rev.svg)
 
 ### Large Lookup (`LUX`)
 
@@ -308,7 +323,7 @@ cursor += length;
 ||6|`bitReversal`|
 ||5:0|`length - 1`|
 
-(T.B.D.)
+(Specifications under consideration)
 
 ### Large Copy (`CPX`)
 
@@ -321,7 +336,7 @@ cursor += length;
 ||6|`bitReversal`|
 ||5:0|`length - 1`|
 
-(T.B.D.)
+(Specifications under consideration)
 
 ### Long Distance Large Copy (`CPL`)
 
@@ -335,7 +350,7 @@ cursor += length;
 ||6|`bitReversal`|
 ||5:0|`length - 1`|
 
-(T.B.D.)
+(Specifications under consideration)
 
 # Rendering
 
