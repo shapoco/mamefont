@@ -85,12 +85,12 @@ A structure that provides information common to the entire font.
 
 ### Shrinked Table Entry (2 Byte)
 
-The Shrink Format of the Glyph Table can be applied when all glyphWidth and xAdvance in
+The Shrinked Format of the Glyph Table can be applied when all glyphWidth and xAdvance in
 the font are 16 pixel or less, and the total size of the microcode block is 512 Byte or less.
 In this case, all microcode entry points must be aligned to 2-Byte boundaries.
 
 |Size \[Bytes\]|Name|
-|:--:|:--|:--|
+|:--:|:--|
 |1|`entryPoint >> 1`|
 |1|`shrinkedGriphDimension`|
 
@@ -125,27 +125,27 @@ If the total size does not reach a 2-Byte boundary, a dummy entry must be append
 
 ## Instruction Set
 
-|Byte0|Byte1|Mnemonic|Description|
-|:--:|:--:|:--:|:--|
-|0x00-3F|-|`LUS`|Single Lookup|
-|0x40-4F|-|`SLC`|Shift Left Previous Byte and Clear Lower Bits|
-|0x50-5F|-|`SLS`|Shift Left Previous Byte and Set Lower Bits|
-|0x60-6F|-|`SRC`|Shift Right Previous Byte and Clear Upper Bits|
-|0x70-7F|-|`SRS`|Shift Right Previous Byte and Set Upper Bits|
-|0x80-9F|-|`LUD`|Double Lookup|
-|0xA0|Byte Data|`LDI`|Load Immediate|
-|0xA1-BF|-|`CPY`|Copy Previous Sequence|
-|0xC0||-|(Reserved)|
-|0xC1-C7|-|`REV`|Reverse Previous Sequence|
-|0xC8||-|(Reserved)|
-|0xC9-CF|-|`REV`|Reverse Previous Sequence|
-|0xD0||-|(Reserved)|
-|0xD1-D7|-|`REV`|Reverse Previous Sequence|
-|0xD8||-|(Reserved)|
-|0xD9-DF|-|`REV`|Reverse Previous Sequence|
-|0xE0-EF|-|`RPT`|Repeat Previous Byte|
-|0xF0-FE|-|`XOR`|XOR Previous Byte with Mask|
-|0xff||-|(Reserved)|
+|1st. Byte|2nd. Byte|3rd. Byte|Mnemonic|Description|
+|:--:|:--:|:--:|:--:|:--|
+|0x00-3F|-|-|`LUS`|Single Lookup|
+|0x40-4F|-|-|`SLC`|Shift Left Previous Byte and Clear Lower Bits|
+|0x50-5F|-|-|`SLS`|Shift Left Previous Byte and Set Lower Bits|
+|0x60-6F|-|-|`SRC`|Shift Right Previous Byte and Clear Upper Bits|
+|0x70-7F|-|-|`SRS`|Shift Right Previous Byte and Set Upper Bits|
+|0x80-9F|-|-|`LUD`|Double Lookup|
+|0xA0|Fragment|-|`LDI`|Load Immediate|
+|0xA1-BF|-|-|`CPY`|Copy Previous Sequence|
+|0xC0|Source|Size|`CPX`|Large Block Copy|
+|0xC1-C7|-|-|`REV`|Reverse Previous Sequence|
+|0xC8|-|-|-|(Reserved)|
+|0xC9-CF|-|-|`REV`|Reverse Previous Sequence|
+|0xD0|-|-|-|(Reserved)|
+|0xD1-D7|-|-|`REV`|Reverse Previous Sequence|
+|0xD8|-|-|-|(Reserved)|
+|0xD9-DF|-|-|`REV`|Reverse Previous Sequence|
+|0xE0-EF|-|-|`RPT`|Repeat Previous Byte|
+|0xF0-FE|-|-|`XOR`|XOR Previous Byte with Mask|
+|0xff|-|-|-|(Reserved)|
 
 ### Single Lookup (`LUS`)
 
@@ -300,6 +300,46 @@ cursor += length;
 ```
 
 ![](./img/inst_rev.svg)
+
+### Large Lookup (`LUX`)
+
+|Byte|Bit Range|Value|
+|:--:|:--:|:--|
+|1st.|7:0|0b11000000|
+|2nd.|7:6|0b00|
+||5:0|`index`|
+|3rd.|7|`byteReversal`|
+||6|`bitReversal`|
+||5:0|`length - 1`|
+
+(T.B.D.)
+
+### Large Copy (`CPX`)
+
+|Byte|Bit Range|Value|
+|:--:|:--:|:--|
+|1st.|7:0|0b11000000|
+|2nd.|7:6|0b01|
+||5:0|`offset`|
+|3rd.|7|`byteReversal`|
+||6|`bitReversal`|
+||5:0|`length - 1`|
+
+(T.B.D.)
+
+### Long Distance Large Copy (`CPL`)
+
+|Byte|Bit Range|Value|
+|:--:|:--:|:--|
+|1st.|7:0|0b11000000|
+|2nd.|7|0b1|
+||6:4|`laneOffset`|
+||3:0|`byteOffset + 8`|
+|3rd.|7|`byteReversal`|
+||6|`bitReversal`|
+||5:0|`length - 1`|
+
+(T.B.D.)
 
 # Rendering
 
