@@ -127,25 +127,21 @@ If the total size does not reach a 2-Byte boundary, a dummy entry must be append
 
 |1st. Byte|2nd. Byte|3rd. Byte|Mnemonic|Description|
 |:--:|:--:|:--:|:--:|:--|
-|0x00-3F|-|-|`LUS`|Single Lookup|
-|0x40-4F|-|-|`SLC`|Shift Left Previous Byte and Clear Lower Bits|
-|0x50-5F|-|-|`SLS`|Shift Left Previous Byte and Set Lower Bits|
-|0x60-6F|-|-|`SRC`|Shift Right Previous Byte and Clear Upper Bits|
-|0x70-7F|-|-|`SRS`|Shift Right Previous Byte and Set Upper Bits|
-|0x80-9F|-|-|`LUD`|Double Lookup|
-|0xA0|Fragment|-|`LDI`|Load Immediate|
-|0xA1-BF|-|-|`CPY`|Copy Previous Sequence|
-|0xC0|Source|Size|`CPX`|Large Block Copy|
-|0xC1-C7|-|-|`REV`|Reverse Previous Sequence|
-|0xC8|-|-|-|(Reserved)|
-|0xC9-CF|-|-|`REV`|Reverse Previous Sequence|
-|0xD0|-|-|-|(Reserved)|
-|0xD1-D7|-|-|`REV`|Reverse Previous Sequence|
-|0xD8|-|-|-|(Reserved)|
-|0xD9-DF|-|-|`REV`|Reverse Previous Sequence|
-|0xE0-EF|-|-|`RPT`|Repeat Previous Byte|
-|0xF0-FE|-|-|`XOR`|XOR Previous Byte with Mask|
-|0xff|-|-|-|(Reserved)|
+|0x00-3F|||`LUS`|Single Lookup|
+|0x40-4F|||`SLC`|Shift Left Previous Byte and Clear Lower Bits|
+|0x50-5F|||`SLS`|Shift Left Previous Byte and Set Lower Bits|
+|0x60-6F|||`SRC`|Shift Right Previous Byte and Clear Upper Bits|
+|0x70-7F|||`SRS`|Shift Right Previous Byte and Set Upper Bits|
+|0x80-9F|||`LUD`|Double Lookup|
+|0xA0|any||`LDI`|Load Immediate|
+|0xA1-BF|||`CPY`|Copy Previous Sequence|
+|0xC0|0x00-0x3F|any|`LUX`|Large Lookup|
+|0xC0|0x40-0x7F|any|`CPX`|Large Copy|
+|0xC0|0x80-0xFF|any|`CPL`|Long Distance Large Copy|
+|0xC1-DF<br>(\*)|||`REV`|Reverse Previous Sequence<br>(\*) 0xC8, 0xD0, 0xD8 is prohibited|
+|0xE0-EF|||`RPT`|Repeat Previous Byte|
+|0xF0-FE|||`XOR`|XOR Previous Byte with Mask|
+|0xFF|||n/a|Reserved|
 
 ### Single Lookup (`LUS`)
 
@@ -273,7 +269,7 @@ buff[cursor++] = buff[cursor - 1] ^ (mask << mask_pos);
 ||4:3|`offset`|
 ||2:0|`length - 1`|
 
-Combination of `offset=0` and `length=1` (0xA0) is reserved for `LDI`.
+Combination of `offset=0` and `length=1` (0xA0) is reserved.
 
 ```c
 memcpy(buff + cursor, buff + (cursor - length - offset), length);
@@ -290,7 +286,7 @@ cursor += length;
 ||4:3|`offset`|
 ||2:0|`length - 1`|
 
-`length=1` (0xC0, 0xC8, 0xD0, 0xD8) is reserved for future use.
+`length=1` (0xC0, 0xC8, 0xD0, 0xD8) is reserved.
 
 ```c
 for (int i = 0; i < length; i++) {
