@@ -135,9 +135,9 @@ If the total size does not reach a 2-Byte boundary, a dummy byte must be appende
 |0x80-9F|||`LUD`|Double Lookup|
 |0xA0|any||`LDI`|Load Immediate|
 |0xA1-BF|||`CPY`|Copy Previous Sequence|
-|0xC0|0x00-0x3F|any|`LUX`|Large Lookup|
-|0xC0|0x40-0x7F|any|`CPX`|Large Copy|
-|0xC0|0x80-0xFF|any|`CPL`|Long Distance Large Copy|
+|0xC0|0x00-3F|any|`LUX`|Large Lookup|
+|0xC0|0x40-7F|any|`CPX`|Large Copy|
+|0xC0|0x80-FF|any|`CPL`|Long Distance Large Copy|
 |0xC1-DF<br>(\*)|||`REV`|Reverse Previous Sequence<br>(\*) 0xC8, 0xD0, 0xD8 is prohibited|
 |0xE0-EF|||`RPT`|Repeat Previous Fragment|
 |0xF0-FE|||`XOR`|XOR Previous Fragment with Mask|
