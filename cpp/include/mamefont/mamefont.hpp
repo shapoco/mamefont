@@ -1,6 +1,6 @@
 #pragma once
 
-#include "mamefont_common.hpp"
+#include "mamefont/mamefont_common.hpp"
 
 namespace mamefont {
 
