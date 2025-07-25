@@ -16,7 +16,7 @@ Compressed font format definitions and tools for small-footprint embedded projec
 |:--:|:--|
 |8|Font Header|
 |`(4 or 2) * glyphTableLen`|Character Table|
-|`lutSize`|Byte Lookup Table (LUT)|
+|`lutSize`|Fragment Lookup Table (LUT)|
 |(Variable)|Microcode Blocks|
 
 ## Font Header
@@ -67,7 +67,7 @@ A structure that provides information common to the entire font.
 |:--:|:--|:--|
 |2|`entryPoint`|Offset from start of Microcode Block in bytes|
 |1|`glyphDimension0`|Dimension of glyph bitmap|
-|2|`glyphDimension1`|Dimension of glyph bitmap|
+|1|`glyphDimension1`|Dimension of glyph bitmap|
 
 #### `glyphDimension0`
 
@@ -114,7 +114,7 @@ Be careful as these can lead to corner case issues.
 
 ## Lookup Table
 
-If the total size does not reach a 2-Byte boundary, a dummy entry must be appended.
+If the total size does not reach a 2-Byte boundary, a dummy byte must be appended.
 `lutSize` includes this dummy byte.
 
 ## Microcode Block
@@ -128,10 +128,10 @@ If the total size does not reach a 2-Byte boundary, a dummy entry must be append
 |1st. Byte|2nd. Byte|3rd. Byte|Mnemonic|Description|
 |:--:|:--:|:--:|:--:|:--|
 |0x00-3F|||`LUS`|Single Lookup|
-|0x40-4F|||`SLC`|Shift Left Previous Byte and Clear Lower Bits|
-|0x50-5F|||`SLS`|Shift Left Previous Byte and Set Lower Bits|
-|0x60-6F|||`SRC`|Shift Right Previous Byte and Clear Upper Bits|
-|0x70-7F|||`SRS`|Shift Right Previous Byte and Set Upper Bits|
+|0x40-4F|||`SLC`|Shift Left Previous Fragment and Clear Lower Bits|
+|0x50-5F|||`SLS`|Shift Left Previous Fragment and Set Lower Bits|
+|0x60-6F|||`SRC`|Shift Right Previous Fragment and Clear Upper Bits|
+|0x70-7F|||`SRS`|Shift Right Previous Fragment and Set Upper Bits|
 |0x80-9F|||`LUD`|Double Lookup|
 |0xA0|any||`LDI`|Load Immediate|
 |0xA1-BF|||`CPY`|Copy Previous Sequence|
@@ -139,8 +139,8 @@ If the total size does not reach a 2-Byte boundary, a dummy entry must be append
 |0xC0|0x40-0x7F|any|`CPX`|Large Copy|
 |0xC0|0x80-0xFF|any|`CPL`|Long Distance Large Copy|
 |0xC1-DF<br>(\*)|||`REV`|Reverse Previous Sequence<br>(\*) 0xC8, 0xD0, 0xD8 is prohibited|
-|0xE0-EF|||`RPT`|Repeat Previous Byte|
-|0xF0-FE|||`XOR`|XOR Previous Byte with Mask|
+|0xE0-EF|||`RPT`|Repeat Previous Fragment|
+|0xF0-FE|||`XOR`|XOR Previous Fragment with Mask|
 |0xFF|||n/a|Reserved|
 
 ### Single Lookup (`LUS`)
@@ -150,7 +150,7 @@ If the total size does not reach a 2-Byte boundary, a dummy entry must be append
 |1st.|7:6|0b00|
 ||5:0|`index`|
 
-The state machine simply copies the byte in the LUT to the glyph buffer. If reverseBitOrder=1 is set, the byte data in the LUT must also have its bit order reversed.
+The state machine simply copies the fragment in the LUT to the glyph buffer. If msb1st=1 is set, the fragments in the LUT must also be MSB 1st.
 
 ```c
 buff[cursor++] = lut[index];
@@ -178,9 +178,9 @@ buff[cursor++] = lut[index + step];
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
 |1st.|7:0|0xA0|
-|2nd.|7:0|Byte Data|
+|2nd.|7:0|Fragment|
 
-The state machine simply copies the second byte of the instruction code into the glyph buffer. If reverseBitOrder=1 is set, the byte data in the instruction code must also have its bit order reversed.
+The state machine simply copies the second byte of the instruction code into the glyph buffer. If msb1st=1 is set, the fragment in the instruction code must also be MSB 1st.
 
 ```c
 buff[cursor++] = microcode[pc++];
@@ -188,7 +188,7 @@ buff[cursor++] = microcode[pc++];
 
 ![](./img/inst_ldi.svg)
 
-### Repeat Previous Byte (`RPT`)
+### Repeat Previous Fragment (`RPT`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
@@ -202,7 +202,7 @@ cursor += repeat_count;
 
 ![](./img/inst_rpt.svg)
 
-### Shift Previous Byte and Clear/Set Lower/Upper Bits (`SLC`, `SLS`, `SRC`, `SRS`)
+### Shift Previous Fragment and Clear/Set Lower/Upper Bits (`SLC`, `SLS`, `SRC`, `SRS`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
@@ -212,7 +212,7 @@ cursor += repeat_count;
 ||3:2|`shift_size - 1`|
 ||1:0|`repeat_count - 1`|
 
-`SLx` shifts the byte towards the Near Bit direction, `SRx` does the opposite.
+`SLx` shifts the fragment towards the Near Bit direction, `SRx` does the opposite.
 
 |`scanDirection`|`reverseBitOrder`|`SLx` Shift Direction|`SRx` Shift Direction|
 |:--:|:--:|:--:|:--:|
@@ -244,7 +244,7 @@ for (int i = 0; i < repeat_count; i++) {
 
 ![](./img/inst_sxx.svg)
 
-### XOR Previous Byte with Mask (`XOR`)
+### XOR Previous Fragment with Mask (`XOR`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
