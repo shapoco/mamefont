@@ -29,8 +29,8 @@ static constexpr uint8_t OFST_GLYPH_DIMENSION_0 = 2;
 static constexpr uint8_t OFST_GLYPH_DIMENSION_1 = 3;
 
 enum FontFlags : uint8_t {
-  VERTICAL_SCAN = 0x80,
-  BIT_REVERSE = 0x40,
+  VERTICAL_FRAGMENT = 0x80,
+  MSB1ST = 0x40,
   SHRINKED_GLYPH_TABLE = 0x20,
 };
 

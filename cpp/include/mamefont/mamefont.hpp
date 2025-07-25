@@ -79,13 +79,13 @@ class Font {
     return (blob[OFST_FONT_DIMENSION_0] & 0x3f) + 1;
   }
 
-  MAMEFONT_ALWAYS_INLINE const bool verticalScan() const {
-#ifdef MAMEFONT_HORIZONTAL_SCAN_ONLY
+  MAMEFONT_ALWAYS_INLINE const bool verticalFragment() const {
+#ifdef MAMEFONT_HORIZONTAL_FRAGMENT_ONLY
     return false;
-#elifdef MAMEFONT_VERTICAL_SCAN_ONLY
+#elifdef MAMEFONT_VERTICAL_FRAGMENT_ONLY
     return true;
 #else
-    return blob[OFST_FONT_FLAGS] & 0x80;
+    return blob[OFST_FONT_FLAGS] & FontFlags::VERTICAL_FRAGMENT;
 #endif
   }
 
@@ -143,12 +143,12 @@ class Font {
                                      int16_t *stride) const {
     int16_t w = glyph->width();
     int16_t h = fontHeight();
-    if (verticalScan()) {
-      *stride = ((w + 7) / 8);
-      return *stride * h;
-    } else {
+    if (verticalFragment()) {
       *stride = w;
       return w * ((h + 7) / 8);
+    } else {
+      *stride = ((w + 7) / 8);
+      return *stride * h;
     }
   }
 
@@ -164,7 +164,7 @@ struct GlyphBuffer {
 };
 
 class Renderer {
- public:
+ private:
   struct AddrRule {
     int8_t lanesPerGlyph;     // Number of lanes per glyph
     int8_t fragsPerLane;      // Number of fragments per lane
@@ -253,26 +253,27 @@ class Renderer {
   AddrRule rule;
   Cursor writeCursor;
 
+ public:
   Renderer(const Font &font) {
     this->flags = font.flags();
     this->lut = font.blob + font.lutOffset();
     this->microcode = font.blob + font.microCodeOffset();
     this->fontHeight = font.fontHeight();
 
-#ifdef MAMEFONT_HORIZONTAL_SCAN_ONLY
-    bool verticalScan = false;
-#elifdef MAMEFONT_VERTICAL_SCAN_ONLY
-    bool verticalScan = true;
+#ifdef MAMEFONT_HORIZONTAL_FRAGMENT_ONLY
+    bool verticalFrag = false;
+#elifdef MAMEFONT_VERTICAL_FRAGMENT_ONLY
+    bool verticalFrag = true;
 #else
-    bool verticalScan = flags & FontFlags::VERTICAL_SCAN;
+    bool verticalFrag = flags & FontFlags::VERTICAL_FRAGMENT;
 #endif
 
-    if (verticalScan) {
-      rule.fragsPerLane = fontHeight;
-      rule.laneStride = 1;
-    } else {
+    if (verticalFrag) {
       rule.lanesPerGlyph = (fontHeight + 7) / 8;
       rule.fragStride = 1;
+    } else {
+      rule.fragsPerLane = fontHeight;
+      rule.laneStride = 1;
     }
   }
 
@@ -280,21 +281,21 @@ class Renderer {
     // buffStride = buff.stride;
     buffData = buff.data;
 
-#ifdef MAMEFONT_HORIZONTAL_SCAN_ONLY
-    bool verticalScan = false;
-#elifdef MAMEFONT_VERTICAL_SCAN_ONLY
-    bool verticalScan = true;
+#ifdef MAMEFONT_HORIZONTAL_FRAGMENT_ONLY
+    bool verticalFrag = false;
+#elifdef MAMEFONT_VERTICAL_FRAGMENT_ONLY
+    bool verticalFrag = true;
 #else
-    bool verticalScan = flags & FontFlags::VERTICAL_SCAN;
+    bool verticalFrag = flags & FontFlags::VERTICAL_FRAGMENT;
 #endif
 
     int8_t glyphWidth = glyph.width();
-    if (verticalScan) {
-      rule.fragStride = buff.stride;
-      rule.lanesPerGlyph = (glyphWidth + 7) / 8;
-    } else {
+    if (verticalFrag) {
       rule.fragsPerLane = glyphWidth;
       rule.laneStride = buff.stride;
+    } else {
+      rule.fragStride = buff.stride;
+      rule.lanesPerGlyph = (glyphWidth + 7) / 8;
     }
     numLanesToGlyphEnd = rule.lanesPerGlyph;
 
@@ -373,6 +374,7 @@ class Renderer {
     return Status::SUCCESS;
   }
 
+ private:
 #ifdef MAMEFONT_STM_VERBOSE
 
 #define MAMEFONT_BEFORE_OPERATION(fmt, ...)               \

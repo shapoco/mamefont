@@ -28,7 +28,7 @@ A structure that provides information common to the entire font.
 |1|`formatVersion`|0x01|
 |1|`firstCode`|ASCII code of the first entry of Glyph Table|
 |1|`glyphTableLen - 1`|Number of entries of Glyph Table|
-|1|`lutSize / 4 - 1`|Number of bytes of LUT|
+|1|`lutSize - 1`|Number of bytes of LUT|
 |1|`fontDimension0`|Dimension of Font|
 |1|`fontDimension1`|Dimension of Font|
 |1|(Reserved)||
@@ -52,12 +52,12 @@ A structure that provides information common to the entire font.
 
 |Bit Range|Name|Description|
 |:--:|:--|:--|
-|7|`scanDirection`|0: horizontal, 1: vertical|
-|6|`reverseBitOrder`|0: LSB=nearBit, 1: LSB=farBit|
+|7|`verticalFragment`|0: Horizontal Fragment, 1: Vertical Fragment|
+|6|`msb1st`|0: LSB=Near Pixel, 1: LSB=Far Pixel|
 |5|`shrinkedGlyphTable`|0: Normal Format, 1: Shrinked Format|
 |4:0|(Reserved)||
 
-![](./img/scan_path.svg)
+![](./img/frag_shape.svg)
 
 ## Glyph Table
 

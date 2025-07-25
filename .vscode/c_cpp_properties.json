@@ -5,7 +5,6 @@
             "includePath": [
                 "${AVR_GCC_PATH}/avr/include",
                 "${workspaceFolder}/cpp/include",
-                "${workspaceFolder}/example/fonts/cpp/include",
                 "${workspaceFolder}/example/tiny402_ssd1306/cpp/include"
             ],
             "compilerPath": "${AVR_GCC_PATH}/bin/avr-g++",
