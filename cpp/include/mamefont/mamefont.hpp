@@ -236,7 +236,7 @@ class Renderer {
 
   FontFlags flags;
   const fragment_t *lut;
-  const uint8_t *microcode;
+  const uint8_t *bytecode;
   uint8_t fontHeight;
 
   uint8_t *buffData;
@@ -253,7 +253,7 @@ class Renderer {
   Renderer(const Font &font) {
     this->flags = font.flags();
     this->lut = font.blob + font.lutOffset();
-    this->microcode = font.blob + font.microCodeOffset();
+    this->bytecode = font.blob + font.microCodeOffset();
     this->fontHeight = font.fontHeight();
 
 #ifdef MAMEFONT_HORIZONTAL_FRAGMENT_ONLY
@@ -310,7 +310,7 @@ class Renderer {
 #endif
 
     while (numLanesToGlyphEnd > 0) {
-      uint8_t inst = microcode[programCounter++];
+      uint8_t inst = bytecode[programCounter++];
       switch (inst & 0xf0) {
         case 0x00:  // LUS
         case 0x10:  // LUS
@@ -469,7 +469,7 @@ class Renderer {
   }
 
   MAMEFONT_ALWAYS_INLINE void LDI(uint8_t inst) {
-    fragment_t frag = microcode[programCounter++];
+    fragment_t frag = bytecode[programCounter++];
     MAMEFONT_BEFORE_OPERATION("LDI (frag=0x%02X)", frag);
     write(frag);
     MAMEFONT_AFTER_OPERATION(1);

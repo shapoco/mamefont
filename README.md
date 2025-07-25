@@ -19,7 +19,7 @@ Compressed font format specification and library for tiny-footprint embedded pro
 |8|Font Header|
 |(4 or 2) \* `numGlyphs`|Character Table|
 |`lutSize`|Fragment Lookup Table (LUT)|
-|(Variable)|Microcode Blocks|
+|(Variable)|Bytecode Blocks|
 
 ## Font Header
 
@@ -68,7 +68,7 @@ A structure that provides information common to the entire font.
 
 |Size \[Bytes\]|Value|Description|
 |:--:|:--|:--|
-|2|`entryPoint`|Offset from start of Microcode Block in bytes|
+|2|`entryPoint`|Offset from start of Bytecode Block in bytes|
 |1|`glyphDimension[0]`|Dimension of the glyph|
 |1|`glyphDimension[1]`|Dimension of the glyph|
 
@@ -85,7 +85,7 @@ A structure that provides information common to the entire font.
 
 ### Shrinked Table Entry (2 Byte)
 
-The Shrinked Format of the Glyph Table can be applied when all glyphWidth and xAdvance in the font are 16 pixel or less, and the total size of the microcode block is 512 Byte or less. In this case, all microcode entry points must be aligned to 2-Byte boundaries.
+The Shrinked Format of the Glyph Table can be applied when all glyphWidth and xAdvance in the font are 16 pixel or less, and the total size of the bytecode block is 512 Byte or less. In this case, all bytecode entry points must be aligned to 2-Byte boundaries.
 
 |Size \[Bytes\]|Value|Description|
 |:--:|:--|:--|
@@ -115,7 +115,7 @@ Be careful as these can lead to corner case issues.
 If the total size does not reach a 2-Byte boundary, a dummy byte must be appended.
 The value of `lutSize` includes this dummy byte.
 
-## Microcode Block
+## Bytecode Block
 
 |Size \[Bytes\]|Description|
 |:--:|:--|
@@ -189,7 +189,7 @@ The state machine simply copies the second byte of the instruction code into the
 #### Pseudo Code
 
 ```c
-buff[cursor++] = microcode[programCounter++];
+buff[cursor++] = bytecode[programCounter++];
 ```
 
 ### Repeat Previous Fragment (`RPT`)
