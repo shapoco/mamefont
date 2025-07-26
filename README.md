@@ -125,7 +125,7 @@ The value of `lutSize` includes this dummy byte.
 
 |1st. Byte|2nd. Byte|3rd. Byte|Mnemonic|Description|
 |:--:|:--:|:--:|:--:|:--|
-|0x00-3F|||`LUS`|Single Lookup|
+|0x00-3F|||`LUP`|Single Lookup|
 |0x40-4F|||`SLC`|Shift Left Previous Fragment and Clear Lower Bits|
 |0x50-5F|||`SLS`|Shift Left Previous Fragment and Set Lower Bits|
 |0x60-6F|||`SRC`|Shift Right Previous Fragment and Clear Upper Bits|
@@ -133,15 +133,15 @@ The value of `lutSize` includes this dummy byte.
 |0x80-9F|||`LUD`|Double Lookup|
 |0xA0|any||`LDI`|Load Immediate|
 |0xA1-BF|||`CPY`|Copy Previous Sequence|
-|0xC0|0x00-3F|any|`LUX`|Large Lookup|
-|0xC0|0x40-7F|any|`CPX`|Large Copy|
-|0xC0|0x80-FF|any|`CPL`|Long Distance Large Copy|
+|0xC0|0x00-3F|any|`LUL`|Large Lookup|
+|0xC0|0x40-7F|any|`CPL`|Large Copy|
+|0xC0|0x80-FF|any|`CPX`|Long Distance Large Copy|
 |0xC1-DF<br>(\*)|||`REV`|Reverse Previous Sequence<br>(\*) 0xC8, 0xD0, 0xD8 is prohibited|
 |0xE0-EF|||`RPT`|Repeat Previous Fragment|
 |0xF0-FE|||`XOR`|XOR Previous Fragment with Mask|
 |0xFF|||n/a|Reserved|
 
-### Single Lookup (`LUS`)
+### Single Lookup (`LUP`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
@@ -312,7 +312,7 @@ for (int i = 0; i < length; i++) {
 cursor += length;
 ```
 
-### Large Lookup (`LUX`)
+### Large Lookup (`LUL`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
@@ -325,7 +325,7 @@ cursor += length;
 
 (Specifications under consideration)
 
-### Large Copy (`CPX`)
+### Large Copy (`CPL`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
@@ -338,7 +338,7 @@ cursor += length;
 
 (Specifications under consideration)
 
-### Long Distance Large Copy (`CPL`)
+### Long Distance Large Copy (`CPX`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|

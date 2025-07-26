@@ -312,11 +312,11 @@ class Renderer {
     while (numLanesToGlyphEnd > 0) {
       uint8_t inst = bytecode[programCounter++];
       switch (inst & 0xf0) {
-        case 0x00:  // LUS
-        case 0x10:  // LUS
-        case 0x20:  // LUS
-        case 0x30:  // LUS
-          LUS(inst);
+        case 0x00:  // LUP
+        case 0x10:  // LUP
+        case 0x20:  // LUP
+        case 0x30:  // LUP
+          LUP(inst);
           break;
 
         case 0x40:  // SLC
@@ -398,10 +398,10 @@ class Renderer {
 
 #endif
 
-  MAMEFONT_ALWAYS_INLINE void LUS(uint8_t inst) {
+  MAMEFONT_ALWAYS_INLINE void LUP(uint8_t inst) {
     uint8_t index = inst & 0x3f;
     fragment_t byte = lut[index];
-    MAMEFONT_BEFORE_OPERATION("LUS (idx=%d)", index);
+    MAMEFONT_BEFORE_OPERATION("LUP (idx=%d)", index);
     write(byte);
     MAMEFONT_AFTER_OPERATION(1);
   }
