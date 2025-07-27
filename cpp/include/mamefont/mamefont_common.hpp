@@ -4,6 +4,7 @@
 
 #ifdef MAMEFONT_STM_DEBUG
 #include <stdio.h>
+#include <string.h>
 #endif
 
 #define MAMEFONT_ALWAYS_INLINE inline __attribute__((always_inline))
@@ -11,8 +12,7 @@
 namespace mamefont {
 
 static constexpr int16_t ENTRYPOINT_DUMMY = 0xffff;
-static constexpr uint8_t HISTORY_SIZE = 32;
-static constexpr uint8_t SEGMENT_HEIGHT = 8;
+static constexpr uint8_t FRAGMENT_SIZE = 8;
 
 static constexpr uint8_t OFST_FORMAT_VERSION = 0;
 static constexpr uint8_t OFST_FONT_FLAGS = 1;
@@ -52,11 +52,27 @@ enum FontFlags : uint8_t {
   FONT_FLAG_SHRINKED_GLYPH_TABLE = 0x20,
 };
 
-enum class Status {
+enum class Status : uint8_t {
   SUCCESS = 0,
   CHAR_CODE_OUT_OF_RANGE,
   GLYPH_NOT_DEFINED,
   UNKNOWN_OPCODE,
+};
+
+enum class Operator : int8_t {
+  NONE = 0,
+  RPT,
+  CPY,
+  REV,
+  XOR,
+  SLC,
+  SLS,
+  SRC,
+  SRS,
+  LUP,
+  LUD,
+  LDI,
+  CPX,
 };
 
 using fragment_t = uint8_t;
