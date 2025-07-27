@@ -325,55 +325,51 @@ class Renderer {
 
     while (numLanesToGlyphEnd > 0) {
       uint8_t inst = bytecode[programCounter++];
+
       switch (inst & 0xf0) {
-        case 0x00:  // LUP
-        case 0x10:  // LUP
-        case 0x20:  // LUP
-        case 0x30:  // LUP
+        case 0x00:
+        case 0x10:
+        case 0x20:
+        case 0x30:
           LUP(inst);
           break;
 
-        case 0x40:  // SLC
-        case 0x50:  // SLS
-        case 0x60:  // SRC
-        case 0x70:  // SRS
-          SLC_SLS_SRC_SRS(inst);
-          break;
-
-        case 0x80:  // LUD
-        case 0x90:  // LUD
+        case 0x40:
+        case 0x50:
           LUD(inst);
           break;
 
-        case 0xa0:  // CPY or LDI
-        case 0xb0:  // CPY
-          if (inst == 0xa0) {
-            LDI(inst);
-          } else {
-            CPY_REV(inst, false);
-          }
-          break;
-
-        case 0xc0:  // REV
-        case 0xd0:  // REV
-          if (inst == 0xc0) {
-            CPX(inst);
-          } else if (inst == 0xd0) {
-            return Status::UNKNOWN_OPCODE;
-          } else {
-            CPY_REV(inst, true);
-          }
-          break;
-
-        case 0xe0:  // RPT
+        case 0x60:
           RPT(inst);
           break;
 
-        case 0xf0:  // XOR
-          if (inst == 0xff) {
+        case 0x70:
+          if (inst == 0x7f) {
             return Status::UNKNOWN_OPCODE;
           } else {
             XOR(inst);
+          }
+          break;
+
+        case 0x80:
+        case 0x90:
+        case 0xa0:
+        case 0xb0:
+          SFT(inst);
+          break;
+
+        case 0xc0:
+        case 0xd0:
+        case 0xe0:
+        case 0xf0:
+          if (inst == 0xc0) {
+            LDI(inst);
+          } else if (inst == 0xe0) {
+            CPX(inst);
+          } else if (inst == 0xe8 || inst == 0xf0 || inst == 0xf8) {
+            return Status::UNKNOWN_OPCODE;
+          } else {
+            CPY(inst);
           }
           break;
 
@@ -405,6 +401,7 @@ class Renderer {
         logPtr += snprintf(logPtr, logEnd - logPtr, "   ");                  \
       }                                                                      \
     }                                                                        \
+    logPtr += snprintf(logPtr, logEnd - logPtr, "%-4s", getMnemonic(opr));   \
     logPtr += snprintf(logPtr, logEnd - logPtr, (fmt), ##__VA_ARGS__);       \
     printf("%-64s", logBuff);                                                \
     if (logPtr - logBuff > 64) {                                             \
@@ -414,17 +411,19 @@ class Renderer {
     printf("--> ");                                                          \
   } while (false)
 
-#define MAMEFONT_AFTER_OP(len)                             \
-  do {                                                     \
-    for (int i = 0; i < (len); i++) {                      \
-      if (i % 16 == 0 && i > 0) {                          \
-        for (int j = 0; j < 64 + 4; j++) printf(" ");      \
-      }                                                    \
+#define MAMEFONT_AFTER_OP(len)                      \
+  do {                                              \
+    for (int i = 0; i < (len); i++) {               \
+      if (i % 16 == 0 && i > 0) {                   \
+        for (int j = 0; j < 64 + 4; j++) {          \
+          printf(" ");                              \
+        }                                           \
+      }                                             \
       printf("%02X ", readPostIncr(dbgDumpCursor)); \
-      if ((i + 1) % 16 == 0 || (i + 1) == (len)) {         \
-        printf("\n");                                      \
-      }                                                    \
-    }                                                      \
+      if ((i + 1) % 16 == 0 || (i + 1) == (len)) {  \
+        printf("\n");                               \
+      }                                             \
+    }                                               \
   } while (false)
 
 #else
@@ -456,15 +455,14 @@ class Renderer {
     MAMEFONT_AFTER_OP(2);
   }
 
-  MAMEFONT_ALWAYS_INLINE void SLC_SLS_SRC_SRS(uint8_t inst) {
+  MAMEFONT_ALWAYS_INLINE void SFT(uint8_t inst) {
     uint8_t dir = inst & 0x20;
     uint8_t postOp = inst & 0x10;
     uint8_t size = ((inst >> 2) & 0x3) + 1;
     uint8_t rptCount = (inst & 0x03) + 1;
 
-    Operator opr = dir ? (postOp ? Operator::SLS : Operator::SRC)
-                       : (postOp ? Operator::SLS : Operator::SLC);
-    MAMEFONT_BEFORE_OP(opr, 1, "(size=%1d, rpt=%1d)", size, rptCount);
+    MAMEFONT_BEFORE_OP(Operator::SFT, 1, "(dir=%d, postOp=%d, size=%d, rpt=%d)",
+                       dir, postOp, size, rptCount);
 
     fragment_t modifier = (1 << size) - 1;
     if (dir != 0) modifier <<= (8 - size);
@@ -486,12 +484,13 @@ class Renderer {
     MAMEFONT_AFTER_OP(rptCount);
   }
 
-  MAMEFONT_ALWAYS_INLINE void CPY_REV(uint8_t inst, bool reverse = false) {
+  MAMEFONT_ALWAYS_INLINE void CPY(uint8_t inst) {
     uint8_t offset = (inst >> 3) & 0x3;
     uint8_t length = (inst & 0x07) + 1;
+    uint8_t reverse = (inst & 0x20) != 0;
 
-    Operator opr = reverse ? Operator::REV : Operator::CPY;
-    MAMEFONT_BEFORE_OP(opr, 1, "(ofst=%d, len=%d)", offset, length);
+    MAMEFONT_BEFORE_OP(Operator::CPY, 1, "(ofst=%d, len=%d, rev=%d)", offset,
+                       length, reverse);
 
     if (reverse) {
       Cursor readCursor = writeCursor;
@@ -514,76 +513,41 @@ class Renderer {
     uint8_t byte2 = bytecode[programCounter + 0];
     uint8_t byte3 = bytecode[programCounter + 1];
 
-    bool bitReversal = 0 != (byte3 & CPX_MASK_BIT_REVERSAL);
-    bool byteReversal = 0 != (byte3 & CPX_MASK_BYTE_REVERSAL);
-    uint8_t length = (byte3 & CPX_MASK_LENGTH) + 1;
+    bool bitReverse = byte3 & CPX_MASK_BIT_REVERSAL;
+    bool byteReverse = byte3 & CPX_MASK_BYTE_REVERSAL;
+    bool inverse = byte3 & CPX_MASK_INVERSE;
 
-    CpxSource src;
-    if ((byte2 & 0x80) != 0) {
-      src = CpxSource::DISTANT;
-    } else if ((byte2 & 0x40) != 0) {
-      src = CpxSource::RECENT;
-    } else {
-      src = CpxSource::LUT;
-    }
+    uint8_t length = ((byte3 & CPX_MASK_LENGTH) >> CPX_POS_LENGTH) * 4 + 4;
+    frag_index_t absOffset = byte2 | (((frag_index_t)(byte3 & CPX_MASK_ABS_OFFSET_H)) << 8);
 
-    if (src == CpxSource::LUT) {
-      // copy from LUT
-      uint8_t index = byte2 & CPX_MASK_LUT_INDEX;
-      MAMEFONT_BEFORE_OP(Operator::CPX, 3,
-                         "(src=LUT, idx=%d, len=%d, bitRev=%d, byteRev=%d)",
-                         index, length, bitReversal, byteReversal);
+    MAMEFONT_BEFORE_OP(Operator::CPX, 3,
+                       "(ofst=%d, len=%d, bitRev=%d, byteRev=%d, inv=%d)",
+                       (int)absOffset, (int)length, (int)bitReverse,
+                       (int)byteReverse, (int)inverse);
+
+    Cursor readCursor;
+    readCursor.reset();
+
+    if (byteReverse) {
+      readCursor.add(rule, absOffset + length);
       for (int8_t i = length; i != 0; i--) {
-        fragment_t frag = lut[index];
-        index = (index + 1) & CPX_MASK_LUT_INDEX;
-        if (bitReversal) frag = reverseBits(frag);
+        int idx;
+        fragment_t frag = readPreDecr(readCursor);
+        if (bitReverse) frag = reverseBits(frag);
+        if (inverse) frag = ~frag;
         write(frag);
       }
-      MAMEFONT_AFTER_OP(length);
     } else {
-      int8_t laneOffset = 0;
-      int8_t fragOffset;
-      frag_index_t cursorOffset;
-      if (src == CpxSource::RECENT) {
-        // copy from recent sequence
-        laneOffset = 0;
-        fragOffset = (byte2 & CPX_MASK_RECENT_OFFSET);
-        cursorOffset = -fragOffset;
-      } else {
-        // copy from distant sequence
-        laneOffset = ((byte2 & CPX_MASK_DISTANT_LANE_OFFSET) >>
-                      CPX_BIT_POS_DISTANT_LANE_OFFSET) +
-                     1;
-        fragOffset = (byte2 & CPX_MASK_DISTANT_FRAGMENT_OFFSET) - 8;
-        cursorOffset = -laneOffset * rule.fragsPerLane + fragOffset;
+      readCursor.add(rule, absOffset);
+      for (int8_t i = length; i != 0; i--) {
+        fragment_t frag = readPostIncr(readCursor);
+        if (bitReverse) frag = reverseBits(frag);
+        if (inverse) frag = ~frag;
+        write(frag);
       }
-
-      MAMEFONT_BEFORE_OP(
-          Operator::CPX, 3,
-          "(src=%s, laneOfst=%d, fragOfst=%d, len=%d, bitRev=%d, byteRev=%d)",
-          (src == CpxSource::RECENT ? "RECENT" : "DISTANT"), (int)laneOffset,
-          (int)fragOffset, (int)length, (int)bitReversal, (int)byteReversal);
-
-      Cursor readCursor = writeCursor;
-      if (byteReversal) {
-        readCursor.add(rule, cursorOffset);
-        for (int8_t i = length; i != 0; i--) {
-          int idx;
-          fragment_t frag = readPreDecr(readCursor);
-          if (bitReversal) frag = reverseBits(frag);
-          write(frag);
-        }
-      } else {
-        readCursor.add(rule, cursorOffset - length);
-        for (int8_t i = length; i != 0; i--) {
-          fragment_t frag = readPostIncr(readCursor);
-          if (bitReversal) frag = reverseBits(frag);
-          write(frag);
-        }
-      }
-
-      MAMEFONT_AFTER_OP(length);
     }
+
+    MAMEFONT_AFTER_OP(length);
 
     programCounter += 2;
   }
@@ -638,7 +602,5 @@ class Renderer {
 
 Status drawChar(const Font &font, uint8_t c, const GlyphBuffer &buff,
                 int8_t *glyphWidth = nullptr, int8_t *xAdvance = nullptr);
-
-const char *getMnemonic(Operator op);
 
 }  // namespace mamefont

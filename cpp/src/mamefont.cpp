@@ -23,12 +23,8 @@ const char *getMnemonic(Operator op) {
     case Operator::NONE: return "(None)";
     case Operator::RPT:  return "RPT";
     case Operator::CPY:  return "CPY";
-    case Operator::REV:  return "REV";
     case Operator::XOR:  return "XOR";
-    case Operator::SLC:  return "SLC";
-    case Operator::SLS:  return "SLS";
-    case Operator::SRC:  return "SRC";
-    case Operator::SRS:  return "SRS";
+    case Operator::SFT:  return "SFT";
     case Operator::LUP:  return "LUP";
     case Operator::LUD:  return "LUD";
     case Operator::LDI:  return "LDI";

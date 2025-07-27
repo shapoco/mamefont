@@ -126,20 +126,17 @@ The value of `lutSize` includes this dummy byte.
 |1st. Byte|2nd. Byte|3rd. Byte|Mnemonic|Description|
 |:--:|:--:|:--:|:--:|:--|
 |0x00-3F|||`LUP`|Single Lookup|
-|0x40-4F|||`SLC`|Shift Left Previous Fragment and Clear Lower Bits|
-|0x50-5F|||`SLS`|Shift Left Previous Fragment and Set Lower Bits|
-|0x60-6F|||`SRC`|Shift Right Previous Fragment and Clear Upper Bits|
-|0x70-7F|||`SRS`|Shift Right Previous Fragment and Set Upper Bits|
-|0x80-9F|||`LUD`|Double Lookup|
-|0xA0|any||`LDI`|Load Immediate|
-|0xA1-BF|||`CPY`|Copy Previous Sequence|
-|0xC0|0x00-3F|any|`LUL`|Large Lookup|
-|0xC0|0x40-7F|any|`CPL`|Large Copy|
-|0xC0|0x80-FF|any|`CPX`|Long Distance Large Copy|
-|0xC1-DF<br>(\*)|||`REV`|Reverse Previous Sequence<br>(\*) 0xC8, 0xD0, 0xD8 is prohibited|
-|0xE0-EF|||`RPT`|Repeat Previous Fragment|
-|0xF0-FE|||`XOR`|XOR Previous Fragment with Mask|
-|0xFF|||n/a|Reserved|
+|0x40-5F|||`LUD`|Double Lookup|
+|0x60-6F|||`RPT`|Repeat Last Fragment|
+|0x70-7E|||`XOR`|XOR Last Fragment with Mask|
+|0x7F|||n/a|Reserved|
+|0x80-BF|||`SFT`|Shift Last Fragment|
+|0xC0|any||`LDI`|Load Immediate|
+|0xC1-DF,<br>0xE1-E7,<br>0xE9-EF,<br>0xF1-F7,<br>0xF9-FF|||`CPY`|Copy Recent|
+|0xE0|any|any|`CPX`|Large Copy|
+|0xE8|||n/a|Reserved|
+|0xF0|||n/a|Reserved|
+|0xF8|||n/a|Reserved|
 
 ### Single Lookup (`LUP`)
 
@@ -158,11 +155,11 @@ The state machine simply copies the fragment in the LUT to the glyph buffer. If 
 buff[cursor++] = lut[index];
 ```
 
-### Sequential Double Lookup (`LUD`)
+### Double Lookup (`LUD`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:5|0b100|
+|1st.|7:5|0b010|
 ||4|`step`|
 ||3:0|`index`|
 
@@ -179,7 +176,7 @@ buff[cursor++] = lut[index + step];
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:0|0xA0|
+|1st.|7:0|0xC0|
 |2nd.|7:0|Fragment|
 
 The state machine simply copies the second byte of the instruction code into the glyph buffer. If msb1st=1 is set, the fragment in the instruction code must also be MSB 1st.
@@ -192,11 +189,11 @@ The state machine simply copies the second byte of the instruction code into the
 buff[cursor++] = bytecode[programCounter++];
 ```
 
-### Repeat Previous Fragment (`RPT`)
+### Repeat Last Fragment (`RPT`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:4|0b1110|
+|1st.|7:4|0b0110|
 ||3:0|`repeatCount` - 1|
 
 ![](./img/inst_rpt.svg)
@@ -207,23 +204,23 @@ buff[cursor++] = bytecode[programCounter++];
 memset(buff + cursor, buff[cursor - 1], repeatCount);
 cursor += repeatCount;
 ```
-### Shift Previous Fragment and Clear/Set Lower/Upper Bits (`SLC`, `SLS`, `SRC`, `SRS`)
+### Shift Last Fragment (`SFT`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:6|0b01|
+|1st.|7:6|0b10|
 ||5|`shiftDir` (0: Left, 1: Right)|
 ||4|`postOp` (0: Clear, 1: Set)|
 ||3:2|`shiftSize` - 1|
 ||1:0|`repeatCount` - 1|
 
-`SLx` shifts the fragment towards the LSB direction, `SRx` does the opposite.
+When `shift_dir`=0, SFT shifts the fragment towards the LSB direction, other is the opposite.
 
 ![](./img/inst_sxx.svg)
 
 #### Visual direction of pixel movement
 
-|`verticalFragment`|`msb1st`|`SLC`, `SLS`|`SRC`, `SRS`|
+|`verticalFragment`|`msb1st`|`shift_dir`=0|`shift_dir`=1|
 |:--:|:--:|:--:|:--:|
 |0 (Horizontal)|0 (LSB first)|Right|Left|
 |0 (Horizontal)|1 (MSB first)|Left|Right|
@@ -253,11 +250,11 @@ for (int i = 0; i < repeatCount; i++) {
 }
 ```
 
-### XOR Previous Fragment with Mask (`XOR`)
+### XOR Last Fragment with Mask (`XOR`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:4|0b1111|
+|1st.|7:4|0b0111|
 ||3|`mask_width - 1`|
 ||2:0|`mask_pos`|
 
@@ -272,42 +269,30 @@ int mask = (1 << mask_width) - 1;
 buff[cursor++] = buff[cursor - 1] ^ (mask << mask_pos);
 ```
 
-### Copy Previous Sequence (`CPY`)
+### Copy Recent (`CPY`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:5|0b101|
+|1st.|7:6|0b11|
+||5|`byte_reverse`|
 ||4:3|`offset`|
 ||2:0|`length` - 1|
 
-Combination of `offset=0` and `length=1` (0xA0) is reserved for other instruction or future use.
+- for `byte_reverse` = 0:<br>Combination of `offset=0` and `length=1` (0xC0) is reserved for other instruction or future use.
+- for `byte_reverse` = 1:<br>`length=1` (0xE0, 0xE8, 0xF0, 0xF8) is reserved for other instruction or future use.
 
 ![](./img/inst_cpy.svg)
 
 #### Pseudo Code
 
 ```c
-memcpy(buff + cursor, buff + (cursor - length - offset), length);
-cursor += length;
-```
-
-### Reverse Previous Sequence (`REV`)
-
-|Byte|Bit Range|Value|
-|:--:|:--:|:--|
-|1st.|7:5|0b110|
-||4:3|`offset`|
-||2:0|`length` - 1|
-
-`length=1` (0xC0, 0xC8, 0xD0, 0xD8) is reserved for other instruction or future use.
-
-![](./img/inst_rev.svg)
-
-#### Pseudo Code
-
-```c
-for (int i = 0; i < length; i++) {
-    buff[cursor + i] = buff[cursor - offset - i];
+if (byte_reverse) {
+    for (int i = 0; i < length; i++) {
+        buff[cursor + i] = buff[cursor - offset - i];
+    }
+}
+else {
+    memcpy(buff + cursor, buff + (cursor - length - offset), length);
 }
 cursor += length;
 ```
@@ -316,19 +301,13 @@ cursor += length;
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:0|0b11000000|
-|2nd.|7:0|`copySource`|
-|3rd.|7|`byteReversal`|
-||6|`bitReversal`|
-||5:0|`length` - 1|
-
-#### `copySource`
-
-|Value Range|Description|Position|
-|:--:|:--|:--|
-|0x00-3F|LUT|`index` = `copySource[5:0]`|
-|0x40-7F|Recent Sequence|`offset` = `copySource[5:0]`|
-|0x80-FF|Distant Past Sequence|`laneOffset` = `copySource[6:4]` + 1<br>`fragOffset` = `copySource[3:0]` - 8|
+|1st.|7:0|0xE0|
+|2nd.|7:0|`absOffset[7:0]`|
+|3rd.|7|`bitReverse`|
+||6|`byteReverse`|
+||5|`inverse`|
+||4:1|(`length` / 4) - 4|
+||0|`absOffset[8]`|
 
 (Specifications under consideration)
 

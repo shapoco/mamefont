@@ -36,15 +36,12 @@ static constexpr uint8_t CPX_MASK_DISTANT_LANE_OFFSET =
     ((1 << 2) - 1) << CPX_BIT_POS_DISTANT_LANE_OFFSET;
 static constexpr uint8_t CPX_MASK_DISTANT_FRAGMENT_OFFSET = (1 << 4) - 1;
 
-enum class CpxSource : uint8_t {
-  LUT,
-  RECENT,
-  DISTANT,
-};
-
-static constexpr uint8_t CPX_MASK_BIT_REVERSAL = (1 << 6);
-static constexpr uint8_t CPX_MASK_BYTE_REVERSAL = (1 << 7);
-static constexpr uint8_t CPX_MASK_LENGTH = (1 << 6) - 1;
+static constexpr uint8_t CPX_MASK_BIT_REVERSAL = (1 << 7);
+static constexpr uint8_t CPX_MASK_BYTE_REVERSAL = (1 << 6);
+static constexpr uint8_t CPX_MASK_INVERSE = (1 << 5);
+static constexpr uint8_t CPX_POS_LENGTH = 1;
+static constexpr uint8_t CPX_MASK_LENGTH = ((1 << 4) - 1) << CPX_POS_LENGTH;
+static constexpr uint8_t CPX_MASK_ABS_OFFSET_H = (1 << 0);
 
 enum FontFlags : uint8_t {
   FONT_FLAG_VERTICAL_FRAGMENT = 0x80,
@@ -63,12 +60,8 @@ enum class Operator : int8_t {
   NONE = 0,
   RPT,
   CPY,
-  REV,
   XOR,
-  SLC,
-  SLS,
-  SRC,
-  SRS,
+  SFT,
   LUP,
   LUD,
   LDI,
@@ -90,5 +83,7 @@ using prog_cntr_t = uint8_t;
 #else
 using prog_cntr_t = uint16_t;
 #endif
+
+const char *getMnemonic(Operator op);
 
 }  // namespace mamefont
