@@ -29,10 +29,27 @@ static constexpr uint8_t OFST_ENTRY_POINT = 0;
 static constexpr uint8_t OFST_GLYPH_DIMENSION_0 = 2;
 static constexpr uint8_t OFST_GLYPH_DIMENSION_1 = 3;
 
+static constexpr uint8_t CPX_MASK_LUT_INDEX = (1 << 6) - 1;
+static constexpr uint8_t CPX_MASK_RECENT_OFFSET = (1 << 6) - 1;
+static constexpr uint8_t CPX_BIT_POS_DISTANT_LANE_OFFSET = 4;
+static constexpr uint8_t CPX_MASK_DISTANT_LANE_OFFSET =
+    ((1 << 2) - 1) << CPX_BIT_POS_DISTANT_LANE_OFFSET;
+static constexpr uint8_t CPX_MASK_DISTANT_FRAGMENT_OFFSET = (1 << 4) - 1;
+
+enum class CpxSource : uint8_t {
+  LUT,
+  RECENT,
+  DISTANT,
+};
+
+static constexpr uint8_t CPX_MASK_BIT_REVERSAL = (1 << 6);
+static constexpr uint8_t CPX_MASK_BYTE_REVERSAL = (1 << 7);
+static constexpr uint8_t CPX_MASK_LENGTH = (1 << 6) - 1;
+
 enum FontFlags : uint8_t {
-  VERTICAL_FRAGMENT = 0x80,
-  MSB1ST = 0x40,
-  SHRINKED_GLYPH_TABLE = 0x20,
+  FONT_FLAG_VERTICAL_FRAGMENT = 0x80,
+  FONT_FLAG_MSB1ST = 0x40,
+  FONT_FLAG_SHRINKED_GLYPH_TABLE = 0x20,
 };
 
 enum class Status {

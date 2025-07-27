@@ -312,43 +312,23 @@ for (int i = 0; i < length; i++) {
 cursor += length;
 ```
 
-### Large Lookup (`LUL`)
+### Large Copy (`CPX`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
 |1st.|7:0|0b11000000|
-|2nd.|7:6|0b00|
-||5:0|`index`|
+|2nd.|7:0|`copySource`|
 |3rd.|7|`byteReversal`|
 ||6|`bitReversal`|
-||5:0|`length - 1`|
+||5:0|`length` - 1|
 
-(Specifications under consideration)
+#### `copySource`
 
-### Large Copy (`CPL`)
-
-|Byte|Bit Range|Value|
-|:--:|:--:|:--|
-|1st.|7:0|0b11000000|
-|2nd.|7:6|0b01|
-||5:0|`offset`|
-|3rd.|7|`byteReversal`|
-||6|`bitReversal`|
-||5:0|`length - 1`|
-
-(Specifications under consideration)
-
-### Long Distance Large Copy (`CPX`)
-
-|Byte|Bit Range|Value|
-|:--:|:--:|:--|
-|1st.|7:0|0b11000000|
-|2nd.|7|0b1|
-||6:4|`laneOffset`|
-||3:0|`byteOffset + 8`|
-|3rd.|7|`byteReversal`|
-||6|`bitReversal`|
-||5:0|`length - 1`|
+|Value Range|Description|Position|
+|:--:|:--|:--|
+|0x00-3F|LUT|`index` = `copySource[5:0]`|
+|0x40-7F|Recent Sequence|`offset` = `copySource[5:0]`|
+|0x80-FF|Distant Past Sequence|`laneOffset` = `copySource[6:4]` + 1<br>`fragOffset` = `copySource[3:0]` - 8|
 
 (Specifications under consideration)
 
