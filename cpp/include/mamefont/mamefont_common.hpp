@@ -29,19 +29,12 @@ static constexpr uint8_t OFST_ENTRY_POINT = 0;
 static constexpr uint8_t OFST_GLYPH_DIMENSION_0 = 2;
 static constexpr uint8_t OFST_GLYPH_DIMENSION_1 = 3;
 
-static constexpr uint8_t CPX_MASK_LUT_INDEX = (1 << 6) - 1;
-static constexpr uint8_t CPX_MASK_RECENT_OFFSET = (1 << 6) - 1;
-static constexpr uint8_t CPX_BIT_POS_DISTANT_LANE_OFFSET = 4;
-static constexpr uint8_t CPX_MASK_DISTANT_LANE_OFFSET =
-    ((1 << 2) - 1) << CPX_BIT_POS_DISTANT_LANE_OFFSET;
-static constexpr uint8_t CPX_MASK_DISTANT_FRAGMENT_OFFSET = (1 << 4) - 1;
-
-static constexpr uint8_t CPX_MASK_BIT_REVERSAL = (1 << 7);
-static constexpr uint8_t CPX_MASK_BYTE_REVERSAL = (1 << 6);
-static constexpr uint8_t CPX_MASK_INVERSE = (1 << 5);
-static constexpr uint8_t CPX_POS_LENGTH = 1;
-static constexpr uint8_t CPX_MASK_LENGTH = ((1 << 4) - 1) << CPX_POS_LENGTH;
-static constexpr uint8_t CPX_MASK_ABS_OFFSET_H = (1 << 0);
+static constexpr uint8_t CPX_BIT_REVERSAL_MASK = (1 << 7);
+static constexpr uint8_t CPX_BYTE_REVERSAL_MASK = (1 << 6);
+static constexpr uint8_t CPX_LENGTH_MASK = ((1 << 4) - 1) << 2;
+static constexpr uint8_t CPX_LENGTH_BIAS = 4;
+static constexpr uint8_t CPX_INVERSE_MASK = (1 << 1);
+static constexpr uint8_t CPX_OFFSET_H_MASK = (1 << 0);
 
 enum FontFlags : uint8_t {
   FONT_FLAG_VERTICAL_FRAGMENT = 0x80,

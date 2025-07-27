@@ -214,13 +214,13 @@ cursor += repeatCount;
 ||3:2|`shiftSize` - 1|
 ||1:0|`repeatCount` - 1|
 
-When `shift_dir`=0, SFT shifts the fragment towards the LSB direction, other is the opposite.
+When `shiftDir`=0, SFT shifts the fragment towards the LSB direction, other is the opposite.
 
 ![](./img/inst_sxx.svg)
 
 #### Visual direction of pixel movement
 
-|`verticalFragment`|`msb1st`|`shift_dir`=0|`shift_dir`=1|
+|`verticalFragment`|`msb1st`|`shiftDir`=0|`shiftDir`=1|
 |:--:|:--:|:--:|:--:|
 |0 (Horizontal)|0 (LSB first)|Right|Left|
 |0 (Horizontal)|1 (MSB first)|Left|Right|
@@ -255,18 +255,18 @@ for (int i = 0; i < repeatCount; i++) {
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
 |1st.|7:4|0b0111|
-||3|`mask_width - 1`|
-||2:0|`mask_pos`|
+||3|`maskWidth - 1`|
+||2:0|`maskPos`|
 
-Combination of `mask_width=2` and `mask_pos=7` (0xFF) is reserved for other instruction or future use.
+Combination of `maskWidth=2` and `maskPos=7` (0xFF) is reserved for other instruction or future use.
 
 ![](./img/inst_xor.svg)
 
 #### Pseudo Code
 
 ```c
-int mask = (1 << mask_width) - 1;
-buff[cursor++] = buff[cursor - 1] ^ (mask << mask_pos);
+int mask = (1 << maskWidth) - 1;
+buff[cursor++] = buff[cursor - 1] ^ (mask << maskPos);
 ```
 
 ### Copy Recent (`CPY`)
@@ -274,19 +274,19 @@ buff[cursor++] = buff[cursor - 1] ^ (mask << mask_pos);
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
 |1st.|7:6|0b11|
-||5|`byte_reverse`|
+||5|`byteReverse`|
 ||4:3|`offset`|
 ||2:0|`length` - 1|
 
-- for `byte_reverse` = 0:<br>Combination of `offset=0` and `length=1` (0xC0) is reserved for other instruction or future use.
-- for `byte_reverse` = 1:<br>`length=1` (0xE0, 0xE8, 0xF0, 0xF8) is reserved for other instruction or future use.
+- for `byteReverse` = 0:<br>Combination of `offset=0` and `length=1` (0xC0) is reserved for other instruction or future use.
+- for `byteReverse` = 1:<br>`length=1` (0xE0, 0xE8, 0xF0, 0xF8) is reserved for other instruction or future use.
 
 ![](./img/inst_cpy.svg)
 
 #### Pseudo Code
 
 ```c
-if (byte_reverse) {
+if (byteReverse) {
     for (int i = 0; i < length; i++) {
         buff[cursor + i] = buff[cursor - offset - i];
     }
@@ -305,8 +305,8 @@ cursor += length;
 |2nd.|7:0|`absOffset[7:0]`|
 |3rd.|7|`bitReverse`|
 ||6|`byteReverse`|
-||5|`inverse`|
-||4:1|(`length` / 4) - 4|
+||5:2|(`length` / 4) - 4|
+||1|`inverse`|
 ||0|`absOffset[8]`|
 
 (Specifications under consideration)

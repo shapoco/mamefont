@@ -513,12 +513,12 @@ class Renderer {
     uint8_t byte2 = bytecode[programCounter + 0];
     uint8_t byte3 = bytecode[programCounter + 1];
 
-    bool bitReverse = byte3 & CPX_MASK_BIT_REVERSAL;
-    bool byteReverse = byte3 & CPX_MASK_BYTE_REVERSAL;
-    bool inverse = byte3 & CPX_MASK_INVERSE;
+    bool bitReverse = byte3 & CPX_BIT_REVERSAL_MASK;
+    bool byteReverse = byte3 & CPX_BYTE_REVERSAL_MASK;
+    bool inverse = byte3 & CPX_INVERSE_MASK;
 
-    uint8_t length = ((byte3 & CPX_MASK_LENGTH) >> CPX_POS_LENGTH) * 4 + 4;
-    frag_index_t absOffset = byte2 | (((frag_index_t)(byte3 & CPX_MASK_ABS_OFFSET_H)) << 8);
+    uint8_t length = (byte3 & CPX_LENGTH_MASK) + CPX_LENGTH_BIAS;
+    frag_index_t absOffset = byte2 | (((frag_index_t)(byte3 & CPX_OFFSET_H_MASK)) << 8);
 
     MAMEFONT_BEFORE_OP(Operator::CPX, 3,
                        "(ofst=%d, len=%d, bitRev=%d, byteRev=%d, inv=%d)",
