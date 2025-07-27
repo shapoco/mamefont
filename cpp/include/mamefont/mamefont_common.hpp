@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-#ifdef MAMEFONT_STM_VERBOSE
+#ifdef MAMEFONT_STM_DEBUG
 #include <stdio.h>
 #endif
 

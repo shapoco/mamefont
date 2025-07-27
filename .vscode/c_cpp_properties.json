@@ -16,7 +16,7 @@
                 "-mmcu=attiny85"
             ],
             "defines": [
-                "MAMEFONT_STM_VERBOSE"
+                "MAMEFONT_STM_DEBUG"
             ]
         }
     ],

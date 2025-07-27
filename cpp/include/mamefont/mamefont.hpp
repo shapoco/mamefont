@@ -199,10 +199,6 @@ class Renderer {
           laneOffset += rule.laneStride;
         }
       } else {
-        // #ifdef MAMEFONT_STM_VERBOSE
-        // printf("add(%d) before: offset=%d, laneOffset=%d, fragIndex=%d\n",
-        //(int)delta, (int)offset, (int)laneOffset, (int)fragIndex);
-        // #endif
         delta = -delta;
         while (delta >= rule.fragsPerLane) {
           delta -= rule.fragsPerLane;
@@ -216,10 +212,6 @@ class Renderer {
           fragIndex += rule.fragsPerLane;
           offset = laneOffset + fragIndex;
         }
-        // #ifdef MAMEFONT_STM_VERBOSE
-        // printf("add(%d) after: offset=%d, laneOffset=%d, fragIndex=%d\n",
-        //(int)delta, (int)offset, (int)laneOffset, (int)fragIndex);
-        // #endif
       }
     }
 
@@ -236,11 +228,6 @@ class Renderer {
     }
 
     frag_index_t preDecr(const AddrRule &rule) {
-      // #ifdef MAMEFONT_STM_VERBOSE
-      //       printf("preDecr before: offset=%d, laneOffset=%d,
-      //       fragIndex=%d\n",
-      //              (int)offset, (int)laneOffset, (int)fragIndex);
-      // #endif
       offset -= rule.fragStride;
       fragIndex--;
       if (fragIndex < 0) {
@@ -248,11 +235,6 @@ class Renderer {
         laneOffset -= rule.laneStride;
         offset = laneOffset + fragIndex;
       }
-
-      // #ifdef MAMEFONT_STM_VERBOSE
-      //       printf("preDecr after: offset=%d, laneOffset=%d, fragIndex=%d\n",
-      //              (int)offset, (int)laneOffset, (int)fragIndex);
-      // #endif
       return offset;
     }
   };
@@ -323,7 +305,7 @@ class Renderer {
     lastFragment = 0x00;
     programCounter = glyph.entryPoint();
 
-#ifdef MAMEFONT_STM_VERBOSE
+#ifdef MAMEFONT_STM_DEBUG
     printf("  entryPoint    : %d\n", programCounter);
     printf("  glyphWidth    : %d\n", glyphWidth);
     printf("  fragsPerLane  : %d\n", rule.fragsPerLane);
@@ -394,55 +376,75 @@ class Renderer {
   }
 
  private:
-#ifdef MAMEFONT_STM_VERBOSE
+#ifdef MAMEFONT_STM_DEBUG
+  Cursor dbgDumpCursor;
 
-#define MAMEFONT_BEFORE_OPERATION(inst_size, fmt, ...)                        \
-  char logBuff[128];                                                          \
-  stamp();                                                                    \
-  const uint8_t *instPtr = bytecode + programCounter - 1;                     \
-  char *logBuffPtr = logBuff;                                                 \
-  for (int i_log = 0; i_log < (inst_size); i_log++) {                         \
-    int n_log = snprintf(logBuffPtr, sizeof(logBuff), " %02X", *(instPtr++)); \
-    if (n_log > 0) logBuffPtr += n_log;                                       \
-  }                                                                           \
-  printf("%-10s, ", logBuff);                                                 \
-  snprintf(logBuff, sizeof(logBuff), (fmt), ##__VA_ARGS__);                   \
-  printf("%-32s -->", logBuff);                                               \
-  Cursor dumpCursor = writeCursor;
+#define MAMEFONT_BEFORE_OP(inst_size, fmt, ...)                              \
+  do {                                                                       \
+    dbgDumpCursor = writeCursor;                                             \
+    char logBuff[128];                                                       \
+    char *logPtr = logBuff;                                                  \
+    char *logEnd = logBuff + sizeof(logBuff);                                \
+    const int pc = programCounter - 1;                                       \
+    logPtr += snprintf(logPtr, logEnd - logPtr, "    pc=%5d, ofst=%4d,", pc, \
+                       (int)dbgDumpCursor.offset);                           \
+    for (int i = 0; i < 4; i++) {                                            \
+      if (i < (inst_size)) {                                                 \
+        logPtr +=                                                            \
+            snprintf(logPtr, logEnd - logPtr, " %02X", bytecode[pc + i]);    \
+      } else {                                                               \
+        logPtr += snprintf(logPtr, logEnd - logPtr, "   ");                  \
+      }                                                                      \
+    }                                                                        \
+    logPtr += snprintf(logPtr, logEnd - logPtr, (fmt), ##__VA_ARGS__);       \
+    printf("%-64s", logBuff);                                                \
+    if (logPtr - logBuff > 64) {                                             \
+      printf("\n");                                                          \
+      for (int i = 0; i < 64; i++) printf(" ");                              \
+    }                                                                        \
+    printf("--> ");                                                          \
+  } while (false)
 
-#define MAMEFONT_AFTER_OPERATION(len)                 \
-  for (int i_log = 0; i_log < (len); i_log++) {       \
-    printf(" %02X", read(dumpCursor.postIncr(rule))); \
-  }                                                   \
-  printf("\n");
+#define MAMEFONT_AFTER_OP(len)                             \
+  do {                                                     \
+    for (int i = 0; i < (len); i++) {                      \
+      if (i % 16 == 0 && i > 0) {                          \
+        for (int j = 0; j < 68; j++) printf(" ");          \
+      }                                                    \
+      printf("%02X ", read(dbgDumpCursor.postIncr(rule))); \
+      if ((i + 1) % 16 == 0 || (i + 1) == (len)) {         \
+        printf("\n");                                      \
+      }                                                    \
+    }                                                      \
+  } while (false)
 
 #else
 
-#define MAMEFONT_BEFORE_OPERATION(op, fmt, ...) \
-  do {                                          \
-  } while (0)
+#define MAMEFONT_BEFORE_OP(op, fmt, ...) \
+  do {                                   \
+  } while (false)
 
-#define MAMEFONT_AFTER_OPERATION(len) \
-  do {                                \
-  } while (0)
+#define MAMEFONT_AFTER_OP(len) \
+  do {                         \
+  } while (false)
 
 #endif
 
   MAMEFONT_ALWAYS_INLINE void LUP(uint8_t inst) {
     uint8_t index = inst & 0x3f;
     fragment_t byte = lut[index];
-    MAMEFONT_BEFORE_OPERATION(1, "LUP (idx=%d)", index);
+    MAMEFONT_BEFORE_OP(1, "LUP (idx=%d)", index);
     write(byte);
-    MAMEFONT_AFTER_OPERATION(1);
+    MAMEFONT_AFTER_OP(1);
   }
 
   MAMEFONT_ALWAYS_INLINE void LUD(uint8_t inst) {
     uint8_t index = inst & 0x0f;
     uint8_t step = (inst >> 4) & 0x1;
-    MAMEFONT_BEFORE_OPERATION(1, "LUD (idx=%d, step=%d)", index, step);
+    MAMEFONT_BEFORE_OP(1, "LUD (idx=%d, step=%d)", index, step);
     write(lut[index]);
     write(lut[index + step]);
-    MAMEFONT_AFTER_OPERATION(2);
+    MAMEFONT_AFTER_OP(2);
   }
 
   MAMEFONT_ALWAYS_INLINE void SLC_SLS_SRC_SRS(uint8_t inst) {
@@ -452,7 +454,7 @@ class Renderer {
     uint8_t rptCount = (inst & 0x03) + 1;
 
     const char *mne = dir ? (postOp ? "SRS" : "SRC") : (postOp ? "SLS" : "SLC");
-    MAMEFONT_BEFORE_OPERATION(1, "%s (size=%1d, rpt=%1d)", mne, size, rptCount);
+    MAMEFONT_BEFORE_OP(1, "%s (size=%1d, rpt=%1d)", mne, size, rptCount);
 
     fragment_t modifier = (1 << size) - 1;
     if (dir != 0) modifier <<= (8 - size);
@@ -471,7 +473,7 @@ class Renderer {
       write(lastFragment);
     }
 
-    MAMEFONT_AFTER_OPERATION(rptCount);
+    MAMEFONT_AFTER_OP(rptCount);
   }
 
   MAMEFONT_ALWAYS_INLINE void CPY_REV(uint8_t inst, bool reverse = false) {
@@ -479,7 +481,7 @@ class Renderer {
     uint8_t length = (inst & 0x07) + 1;
 
     const char *mne = reverse ? "REV" : "CPY";
-    MAMEFONT_BEFORE_OPERATION(1, "%s (ofst=%d, len=%d)", mne, offset, length);
+    MAMEFONT_BEFORE_OP(1, "%s (ofst=%d, len=%d)", mne, offset, length);
 
     if (reverse) {
       Cursor readCursor = writeCursor;
@@ -495,7 +497,7 @@ class Renderer {
       }
     }
 
-    MAMEFONT_AFTER_OPERATION(length);
+    MAMEFONT_AFTER_OP(length);
   }
 
   MAMEFONT_ALWAYS_INLINE void CPX(uint8_t inst) {
@@ -518,16 +520,16 @@ class Renderer {
     if (src == CpxSource::LUT) {
       // copy from LUT
       uint8_t index = byte2 & CPX_MASK_LUT_INDEX;
-      MAMEFONT_BEFORE_OPERATION(
-          3, "CPX (src=LUT, idx=%d, len=%d, bitRev=%d, byteRev=%d)", index,
-          length, bitReversal, byteReversal);
+      MAMEFONT_BEFORE_OP(3,
+                         "CPX (src=LUT, idx=%d, len=%d, bitRev=%d, byteRev=%d)",
+                         index, length, bitReversal, byteReversal);
       for (int8_t i = length; i != 0; i--) {
         fragment_t frag = lut[index];
         index = (index + 1) & CPX_MASK_LUT_INDEX;
         if (bitReversal) frag = reverseBits(frag);
         write(frag);
       }
-      MAMEFONT_AFTER_OPERATION(length);
+      MAMEFONT_AFTER_OP(length);
     } else {
       int8_t laneOffset = 0;
       int8_t fragOffset;
@@ -545,7 +547,7 @@ class Renderer {
         fragOffset = (byte2 & CPX_MASK_DISTANT_FRAGMENT_OFFSET) - 8;
         cursorOffset = -laneOffset * rule.fragsPerLane + fragOffset;
       }
-      MAMEFONT_BEFORE_OPERATION(
+      MAMEFONT_BEFORE_OP(
           3,
           "CPX (src=%s, laneOfst=%d, fragOfst=%d, len=%d, bitRev=%d, "
           "byteRev=%d)",
@@ -569,7 +571,7 @@ class Renderer {
         }
       }
 
-      MAMEFONT_AFTER_OPERATION(length);
+      MAMEFONT_AFTER_OP(length);
     }
 
     programCounter += 2;
@@ -577,28 +579,28 @@ class Renderer {
 
   MAMEFONT_ALWAYS_INLINE void LDI(uint8_t inst) {
     fragment_t frag = bytecode[programCounter];
-    MAMEFONT_BEFORE_OPERATION(2, "LDI (frag=0x%02X)", frag);
+    MAMEFONT_BEFORE_OP(2, "LDI (frag=0x%02X)", frag);
     write(frag);
-    MAMEFONT_AFTER_OPERATION(1);
+    MAMEFONT_AFTER_OP(1);
     programCounter += 1;
   }
 
   MAMEFONT_ALWAYS_INLINE void RPT(uint8_t inst) {
     uint8_t repeatCount = (inst & 0x0f) + 1;
-    MAMEFONT_BEFORE_OPERATION(1, "RPT (rpt=%d)", repeatCount);
+    MAMEFONT_BEFORE_OP(1, "RPT (rpt=%d)", repeatCount);
     for (int8_t i = repeatCount; i != 0; i--) {
       write(lastFragment);
     }
-    MAMEFONT_AFTER_OPERATION(repeatCount);
+    MAMEFONT_AFTER_OP(repeatCount);
   }
 
   MAMEFONT_ALWAYS_INLINE void XOR(uint8_t inst) {
     uint8_t width = ((inst >> 3) & 0x01) + 1;
     uint8_t pos = inst & 0x07;
     uint8_t mask = (1 << width) - 1;
-    MAMEFONT_BEFORE_OPERATION(1, "XOR (width=%d, pos=%d)", width, pos);
+    MAMEFONT_BEFORE_OP(1, "XOR (width=%d, pos=%d)", width, pos);
     write(lastFragment ^ (mask << pos));
-    MAMEFONT_AFTER_OPERATION(1);
+    MAMEFONT_AFTER_OP(1);
   }
 
   MAMEFONT_ALWAYS_INLINE void write(uint8_t value) {
@@ -612,13 +614,6 @@ class Renderer {
   MAMEFONT_ALWAYS_INLINE uint8_t read(int16_t offset) const {
     if (offset < 0) return 0;
     return buffData[offset];
-  }
-
-  MAMEFONT_ALWAYS_INLINE void stamp() const {
-#ifdef MAMEFONT_STM_VERBOSE
-    printf("    pc=%5d, ofst=%4d, last=0x%02X,", (int)(programCounter - 1),
-           (int)writeCursor.offset, (int)lastFragment);
-#endif
   }
 };
 
