@@ -17,7 +17,7 @@ Compressed font format specification and library for tiny-footprint embedded pro
 |Size \[Bytes\]|Name|
 |:--:|:--|
 |8|Font Header|
-|(4 or 2) \* `numGlyphs`|Character Table|
+|(4 or 2) \* `numGlyphs`|Glyph Table|
 |`lutSize`|Fragment Lookup Table (LUT)|
 |(Variable)|Bytecode Blocks|
 
@@ -90,9 +90,9 @@ The Shrinked Format of the Glyph Table can be applied when all glyphWidth and xA
 |Size \[Bytes\]|Value|Description|
 |:--:|:--|:--|
 |1|`entryPoint` &gt;&gt; 1|The value of entryPoint divided by 2. The true value of entryPoint must be a multiple of 2.|
-|1|`packedGriphDimension`|Dimension of the glyph|
+|1|`packedGlyphDimension`|Dimension of the glyph|
 
-#### `packedGriphDimension`
+#### `packedGlyphDimension`
 
 |Bit Range|Value|Description|
 |:--:|:--|:--|
@@ -117,13 +117,17 @@ The value of `lutSize` includes this dummy byte.
 
 ## Bytecode Block
 
+A Bytecode Block is the concatenation of all glyph bytecodes. If a Shrink Glyph Table is applied, the start of each glyph bytecode must be aligned to a 2-byte boundary.
+
 |Size \[Bytes\]|Description|
 |:--:|:--|
 |(Variable)|Array of instructions|
 
-## Instruction Set
+# Instruction Set
 
-|1st. Byte|2nd. Byte|3rd. Byte|Mnemonic|Description|
+## Summary
+
+|1st. Byte|2nd. Byte|3rd. Byte|Mnemonic|Name|
 |:--:|:--:|:--:|:--:|:--|
 |0x00-3F|||`LUP`|Single Lookup|
 |0x40-5F|||`LUD`|Double Lookup|
@@ -133,12 +137,12 @@ The value of `lutSize` includes this dummy byte.
 |0x80-BF|||`SFT`|Shift Last Fragment|
 |0xC0|any||`LDI`|Load Immediate|
 |0xC1-DF,<br>0xE1-E7,<br>0xE9-EF,<br>0xF1-F7,<br>0xF9-FF|||`CPY`|Copy Recent|
-|0xE0|any|any|`CPX`|Large Copy|
+|0xE0|any|any|`CPX`|Long Distance Large Copy|
 |0xE8|||n/a|Reserved|
-|0xF0|||n/a|Reserved|
+|0xF0|||`ABO`|Abort|
 |0xF8|||n/a|Reserved|
 
-### Single Lookup (`LUP`)
+## Single Lookup (`LUP`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
@@ -149,13 +153,13 @@ The state machine simply copies the fragment in the LUT to the glyph buffer. If 
 
 ![](./img/inst_lus.svg)
 
-#### Pseudo Code
+### Pseudo Code
 
 ```c
 buff[cursor++] = lut[index];
 ```
 
-### Double Lookup (`LUD`)
+## Double Lookup (`LUD`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
@@ -165,14 +169,14 @@ buff[cursor++] = lut[index];
 
 ![](./img/inst_lud.svg)
 
-#### Pseudo Code
+### Pseudo Code
 
 ```c
 buff[cursor++] = lut[index];
 buff[cursor++] = lut[index + step];
 ```
 
-### Load Immediate (`LDI`)
+## Load Immediate (`LDI`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
@@ -183,13 +187,13 @@ The state machine simply copies the second byte of the instruction code into the
 
 ![](./img/inst_ldi.svg)
 
-#### Pseudo Code
+### Pseudo Code
 
 ```c
 buff[cursor++] = bytecode[programCounter++];
 ```
 
-### Repeat Last Fragment (`RPT`)
+## Repeat Last Fragment (`RPT`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
@@ -198,13 +202,13 @@ buff[cursor++] = bytecode[programCounter++];
 
 ![](./img/inst_rpt.svg)
 
-#### Pseudo Code
+### Pseudo Code
 
 ```c
 memset(buff + cursor, buff[cursor - 1], repeatCount);
 cursor += repeatCount;
 ```
-### Shift Last Fragment (`SFT`)
+## Shift Last Fragment (`SFT`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
@@ -218,7 +222,7 @@ When `shiftDir`=0, SFT shifts the fragment towards the LSB direction, other is t
 
 ![](./img/inst_sxx.svg)
 
-#### Visual direction of pixel movement
+### Visual direction of pixel movement
 
 |`verticalFragment`|`msb1st`|`shiftDir`=0|`shiftDir`=1|
 |:--:|:--:|:--:|:--:|
@@ -227,7 +231,7 @@ When `shiftDir`=0, SFT shifts the fragment towards the LSB direction, other is t
 |1 (Vertical)|0 (LSB first)|Down|Up|
 |1 (Vertical)|1 (MSB first)|Up|Down|
 
-#### Pseudo Code
+### Pseudo Code
 
 ```c
 uint8_t modifier = (1 << shiftSize) - 1;
@@ -250,7 +254,7 @@ for (int i = 0; i < repeatCount; i++) {
 }
 ```
 
-### XOR Last Fragment with Mask (`XOR`)
+## XOR Last Fragment with Mask (`XOR`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
@@ -262,14 +266,14 @@ Combination of `maskWidth=2` and `maskPos=7` (0xFF) is reserved for other instru
 
 ![](./img/inst_xor.svg)
 
-#### Pseudo Code
+### Pseudo Code
 
 ```c
 int mask = (1 << maskWidth) - 1;
 buff[cursor++] = buff[cursor - 1] ^ (mask << maskPos);
 ```
 
-### Copy Recent (`CPY`)
+## Copy Recent (`CPY`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
@@ -283,7 +287,7 @@ buff[cursor++] = buff[cursor - 1] ^ (mask << maskPos);
 
 ![](./img/inst_cpy.svg)
 
-#### Pseudo Code
+### Pseudo Code
 
 ```c
 if (byteReverse) {
@@ -297,7 +301,7 @@ else {
 cursor += length;
 ```
 
-### Large Copy (`CPX`)
+## Long Distance Large Copy (`CPX`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
@@ -310,6 +314,20 @@ cursor += length;
 ||0|`absOffset[8]`|
 
 (Specifications under consideration)
+
+## Abort (`ABO`)
+
+|Byte|Bit Range|Value|
+|:--:|:--:|:--|
+|1st.|7:0|0xF0|
+
+The decompressor must abort decompression when it encounters an `ABO` instruction.
+
+If safety is a priority, the blob generator can add a `ABO` instruction to the end of the glyph bytecode. This instruction is normally never executed, since decompression finishes as soon as the glyph buffer is filled. However, if the blob or decompressor logic is corrupted, this instruction can stop a runaway decompression process.
+
+If a Shrinked Glyph Table is applied and the length of the glyph bytecode sequence does not reach a 2-byte boundary, it is recommended that the remaining part be filled with this instruction.
+
+It is recommended to place three `ABO` instructions at the end of Bytecode Block, i.e. at the end of the entire blob.
 
 # Rendering
 

@@ -381,7 +381,9 @@ class Renderer {
             LDI(inst);
           } else if (inst == 0xe0) {
             CPX(inst);
-          } else if (inst == 0xe8 || inst == 0xf0 || inst == 0xf8) {
+          } else if (inst == 0xf0) {
+            return Status::ABORTED_BY_ABO;
+          } else if (inst == 0xe8 || inst == 0xf8) {
             return Status::UNKNOWN_OPCODE;
           } else {
             CPY(inst);
@@ -411,7 +413,7 @@ class Renderer {
     for (int i = 0; i < 4; i++) {                                            \
       if (i < (inst_size)) {                                                 \
         logPtr += snprintf(logPtr, logEnd - logPtr, " %02X",                 \
-                           mamefont_readBlobU8(bytecode + (pc + i)));                 \
+                           mamefont_readBlobU8(bytecode + (pc + i)));        \
       } else {                                                               \
         logPtr += snprintf(logPtr, logEnd - logPtr, "   ");                  \
       }                                                                      \

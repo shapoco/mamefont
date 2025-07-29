@@ -11,7 +11,7 @@
 
 namespace mamefont {
 
-static constexpr int16_t ENTRYPOINT_DUMMY = 0xffff;
+static constexpr uint16_t ENTRYPOINT_DUMMY = 0xffff;
 static constexpr uint8_t FRAGMENT_SIZE = 8;
 
 static constexpr uint8_t OFST_FORMAT_VERSION = 0;
@@ -47,6 +47,7 @@ enum class Status : uint8_t {
   CHAR_CODE_OUT_OF_RANGE,
   GLYPH_NOT_DEFINED,
   UNKNOWN_OPCODE,
+  ABORTED_BY_ABO,
 };
 
 enum class Operator : int8_t {
