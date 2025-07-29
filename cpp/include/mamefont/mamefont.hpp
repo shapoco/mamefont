@@ -535,19 +535,17 @@ class Renderer {
     bool inverse = byte3 & CPX_INVERSE_MASK;
 
     uint8_t length = (byte3 & CPX_LENGTH_MASK) + CPX_LENGTH_BIAS;
-    frag_index_t absOffset =
+    frag_index_t offset =
         byte2 | (((frag_index_t)(byte3 & CPX_OFFSET_H_MASK)) << 8);
 
     MAMEFONT_BEFORE_OP(Operator::CPX, 3,
                        "(ofst=%d, len=%d, bitRev=%d, byteRev=%d, inv=%d)",
-                       (int)absOffset, (int)length, (int)bitReverse,
+                       (int)offset, (int)length, (int)bitReverse,
                        (int)byteReverse, (int)inverse);
 
-    Cursor readCursor;
-    readCursor.reset();
-
+    Cursor readCursor = writeCursor;
     if (byteReverse) {
-      readCursor.add(rule, absOffset + length);
+      readCursor.add(rule, -offset + length);
       for (int8_t i = length; i != 0; i--) {
         int idx;
         fragment_t frag = readPreDecr(readCursor);
@@ -556,7 +554,7 @@ class Renderer {
         write(frag);
       }
     } else {
-      readCursor.add(rule, absOffset);
+      readCursor.add(rule, -offset);
       for (int8_t i = length; i != 0; i--) {
         fragment_t frag = readPostIncr(readCursor);
         if (bitReverse) frag = reverseBits(frag);

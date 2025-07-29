@@ -306,12 +306,12 @@ cursor += length;
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
 |1st.|7:0|0xE0|
-|2nd.|7:0|`absOffset[7:0]`|
+|2nd.|7:0|`offset[7:0]`|
 |3rd.|7|`bitReverse`|
 ||6|`byteReverse`|
 ||5:2|(`length` / 4) - 4|
 ||1|`inverse`|
-||0|`absOffset[8]`|
+||0|`offset[8]`|
 
 (Specifications under consideration)
 
