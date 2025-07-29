@@ -2,6 +2,13 @@
 
 #include "mamefont/mamefont_common.hpp"
 
+#ifdef MAMEFONT_USE_PROGMEM
+#include <avr/pgmspace.h>
+#define mamefont_readBlobU8 pgm_read_byte
+#else
+#define mamefont_readBlobU8(addr) (*(const uint8_t *)(addr))
+#endif
+
 namespace mamefont {
 
 static uint8_t reverseBits(uint8_t b) {
@@ -11,39 +18,51 @@ static uint8_t reverseBits(uint8_t b) {
   return b;
 }
 
+#ifdef MAMEFONT_USE_PROGMEM
+#define mamefont_readBlobU8 pgm_read_byte
+#else
+#define mamefont_readBlobU8(addr) (*(const uint8_t *)(addr))
+#endif
+
+static MAMEFONT_ALWAYS_INLINE uint16_t readBlobU16(const uint8_t *ptr) {
+  uint8_t lo = mamefont_readBlobU8(ptr);
+  uint8_t hi = mamefont_readBlobU8(ptr + 1);
+  return (static_cast<uint16_t>(hi) << 8) | lo;
+}
+
 struct Glyph {
   const uint8_t *blob;
   bool isShrinked;
 
   Glyph() : blob(nullptr), isShrinked(false) {}
-  Glyph(const uint8_t *data, bool isShrinked)
-      : blob(data), isShrinked(isShrinked) {}
+  Glyph(const uint8_t *blob, bool isShrinked)
+      : blob(blob), isShrinked(isShrinked) {}
 
-  MAMEFONT_ALWAYS_INLINE int16_t entryPoint() const {
+  MAMEFONT_ALWAYS_INLINE uint16_t entryPoint() const {
     if (isShrinked) {
-      return static_cast<int16_t>(blob[0]) << 1;
+      return ((uint16_t)mamefont_readBlobU8(blob)) << 1;
     } else {
-      return reinterpret_cast<const int16_t *>(blob)[0];
+      return readBlobU16(blob);
     }
   }
 
   MAMEFONT_ALWAYS_INLINE bool isValid() const {
-    return !(blob[0] == 0xff && blob[1] == 0xff);
+    return (blob != nullptr) && (readBlobU16(blob) != ENTRYPOINT_DUMMY);
   }
 
   MAMEFONT_ALWAYS_INLINE uint8_t width() const {
     if (isShrinked) {
-      return (blob[1] & 0x0f) + 1;
+      return (mamefont_readBlobU8(blob + 1) & 0x0f) + 1;
     } else {
-      return (blob[2] & 0x3f) + 1;
+      return (mamefont_readBlobU8(blob + 2) & 0x3f) + 1;
     }
   }
 
   MAMEFONT_ALWAYS_INLINE uint8_t xAdvance() const {
     if (isShrinked) {
-      return ((blob[1] >> 4) & 0x0f) + 1;
+      return ((mamefont_readBlobU8(blob + 1) >> 4) & 0x0f) + 1;
     } else {
-      return (blob[3] & 0x3f) + 1;
+      return (mamefont_readBlobU8(blob + 3) & 0x3f) + 1;
     }
   }
 };
@@ -55,7 +74,7 @@ class Font {
   Font(const uint8_t *blob) : blob(blob) {}
 
   MAMEFONT_ALWAYS_INLINE FontFlags flags() const {
-    return static_cast<FontFlags>(blob[OFST_FONT_FLAGS]);
+    return static_cast<FontFlags>(mamefont_readBlobU8(blob + OFST_FONT_FLAGS));
   }
 
   MAMEFONT_ALWAYS_INLINE bool isShrinkedGlyphTable() const {
@@ -67,11 +86,11 @@ class Font {
   }
 
   MAMEFONT_ALWAYS_INLINE uint8_t firstCode() const {
-    return blob[OFST_FIRST_CODE];
+    return mamefont_readBlobU8(blob + OFST_FIRST_CODE);
   }
 
   MAMEFONT_ALWAYS_INLINE uint8_t numGlyphs() const {
-    return blob[OFST_GLYPH_TABLE_LEN] + 1;
+    return mamefont_readBlobU8(blob + OFST_GLYPH_TABLE_LEN) + 1;
   }
 
   MAMEFONT_ALWAYS_INLINE uint8_t lastCode() const {
@@ -79,15 +98,15 @@ class Font {
   }
 
   MAMEFONT_ALWAYS_INLINE uint8_t lutSize() const {
-    return blob[OFST_LUT_SIZE] + 1;
+    return mamefont_readBlobU8(blob + OFST_LUT_SIZE) + 1;
   }
 
   MAMEFONT_ALWAYS_INLINE uint8_t fontHeight() const {
-    return (blob[OFST_FONT_DIMENSION_0] & 0x3f) + 1;
+    return (mamefont_readBlobU8(blob + OFST_FONT_DIMENSION_0) & 0x3f) + 1;
   }
 
   MAMEFONT_ALWAYS_INLINE uint8_t maxGlyphWidth() const {
-    return (blob[OFST_FONT_DIMENSION_2] & 0x3f) + 1;
+    return (mamefont_readBlobU8(blob + OFST_FONT_DIMENSION_2) & 0x3f) + 1;
   }
 
   MAMEFONT_ALWAYS_INLINE const bool verticalFragment() const {
@@ -96,7 +115,8 @@ class Font {
 #elifdef MAMEFONT_VERTICAL_FRAGMENT_ONLY
     return true;
 #else
-    return blob[OFST_FONT_FLAGS] & FontFlags::FONT_FLAG_VERTICAL_FRAGMENT;
+    return mamefont_readBlobU8(blob + OFST_FONT_FLAGS) &
+           FontFlags::FONT_FLAG_VERTICAL_FRAGMENT;
 #endif
   }
 
@@ -128,11 +148,6 @@ class Font {
 
   MAMEFONT_ALWAYS_INLINE int16_t microCodeOffset() const {
     return lutOffset() + lutSize();
-  }
-
-  MAMEFONT_ALWAYS_INLINE const uint8_t *getEntryPoint(
-      const Glyph &glyph) const {
-    return blob + microCodeOffset() + glyph.entryPoint();
   }
 
   int16_t getRequiredGlyphBufferSize(const Glyph *glyph, int8_t *stride) const {
@@ -324,7 +339,7 @@ class Renderer {
 #endif
 
     while (numLanesToGlyphEnd > 0) {
-      uint8_t inst = bytecode[programCounter++];
+      uint8_t inst = mamefont_readBlobU8(bytecode + (programCounter++));
 
       switch (inst & 0xf0) {
         case 0x00:
@@ -395,8 +410,8 @@ class Renderer {
                        (int)dbgDumpCursor.offset);                           \
     for (int i = 0; i < 4; i++) {                                            \
       if (i < (inst_size)) {                                                 \
-        logPtr +=                                                            \
-            snprintf(logPtr, logEnd - logPtr, " %02X", bytecode[pc + i]);    \
+        logPtr += snprintf(logPtr, logEnd - logPtr, " %02X",                 \
+                           mamefont_readBlobU8(bytecode + (pc + i)));                 \
       } else {                                                               \
         logPtr += snprintf(logPtr, logEnd - logPtr, "   ");                  \
       }                                                                      \
@@ -440,7 +455,7 @@ class Renderer {
 
   MAMEFONT_ALWAYS_INLINE void LUP(uint8_t inst) {
     uint8_t index = inst & 0x3f;
-    fragment_t byte = lut[index];
+    fragment_t byte = mamefont_readBlobU8(lut + index);
     MAMEFONT_BEFORE_OP(Operator::LUP, 1, "(idx=%d)", index);
     write(byte);
     MAMEFONT_AFTER_OP(1);
@@ -450,8 +465,8 @@ class Renderer {
     uint8_t index = inst & 0x0f;
     uint8_t step = (inst >> 4) & 0x1;
     MAMEFONT_BEFORE_OP(Operator::LUD, 1, "(idx=%d, step=%d)", index, step);
-    write(lut[index]);
-    write(lut[index + step]);
+    write(mamefont_readBlobU8(lut + index));
+    write(mamefont_readBlobU8(lut + index + step));
     MAMEFONT_AFTER_OP(2);
   }
 
@@ -510,15 +525,16 @@ class Renderer {
   }
 
   MAMEFONT_ALWAYS_INLINE void CPX(uint8_t inst) {
-    uint8_t byte2 = bytecode[programCounter + 0];
-    uint8_t byte3 = bytecode[programCounter + 1];
+    uint8_t byte2 = mamefont_readBlobU8(bytecode + (programCounter + 0));
+    uint8_t byte3 = mamefont_readBlobU8(bytecode + (programCounter + 1));
 
     bool bitReverse = byte3 & CPX_BIT_REVERSAL_MASK;
     bool byteReverse = byte3 & CPX_BYTE_REVERSAL_MASK;
     bool inverse = byte3 & CPX_INVERSE_MASK;
 
     uint8_t length = (byte3 & CPX_LENGTH_MASK) + CPX_LENGTH_BIAS;
-    frag_index_t absOffset = byte2 | (((frag_index_t)(byte3 & CPX_OFFSET_H_MASK)) << 8);
+    frag_index_t absOffset =
+        byte2 | (((frag_index_t)(byte3 & CPX_OFFSET_H_MASK)) << 8);
 
     MAMEFONT_BEFORE_OP(Operator::CPX, 3,
                        "(ofst=%d, len=%d, bitRev=%d, byteRev=%d, inv=%d)",
@@ -553,7 +569,7 @@ class Renderer {
   }
 
   MAMEFONT_ALWAYS_INLINE void LDI(uint8_t inst) {
-    fragment_t frag = bytecode[programCounter];
+    fragment_t frag = mamefont_readBlobU8(bytecode + programCounter);
     MAMEFONT_BEFORE_OP(Operator::LDI, 2, "(frag=0x%02X)", frag);
     write(frag);
     MAMEFONT_AFTER_OP(1);
