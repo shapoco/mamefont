@@ -133,7 +133,7 @@ Each instruction consists of 1 to 3 bytes. The first byte is the "OpCode", and t
 
 The number in parentheses indicates the length of the instruction in bytes.
 
-![](./img/inst_map.svg)
+![](./img/opcode_map.svg)
 
 ## Single Lookup (`LUP`)
 
@@ -144,7 +144,7 @@ The number in parentheses indicates the length of the instruction in bytes.
 
 The state machine simply copies the fragment in the LUT to the glyph buffer. If msb1st=1 is set, the fragments in the LUT must also be MSB 1st.
 
-![](./img/inst_lus.svg)
+![](./img/inst_lup.svg)
 
 ### Pseudo Code
 
@@ -213,7 +213,7 @@ cursor += repeatCount;
 
 When `shiftDir`=0, SFT shifts the fragment towards the LSB direction, other is the opposite.
 
-![](./img/inst_sxx.svg)
+![](./img/inst_sft.svg)
 
 ### Visual direction of pixel movement
 
@@ -285,7 +285,7 @@ buff[cursor++] = buff[cursor - 1] ^ (mask << maskPos);
 ```c
 if (byteReverse) {
     for (int i = 0; i < length; i++) {
-        buff[cursor + i] = buff[cursor - offset - i];
+        buff[cursor + i] = buff[cursor - offset - 1 - i];
     }
 }
 else {
@@ -306,7 +306,31 @@ cursor += length;
 ||1|`inverse`|
 ||0|`offset[8]`|
 
-(Specifications under consideration)
+![](./img/inst_cpx.svg)
+
+### Pseudo Code
+
+```c
+for (int i = 0; i < length; i++) {
+    uint8_t tmp;
+    if (byteReverse) {
+        tmp = buff[cursor - offset + length - 1 - i];
+    }
+    else {
+        tmp = buff[cursor - offset + i];
+    }
+    if (bitReverse) {
+        tmp = ((tmp << 4) & 0xF0) | ((tmp >> 4) & 0x0F);
+        tmp = ((tmp << 2) & 0xCC) | ((tmp >> 2) & 0x33);
+        tmp = ((tmp << 1) & 0xAA) | ((tmp >> 1) & 0x55);
+    }
+    if (inverse) {
+        tmp = ~tmp;
+    }
+    buff[cursor + i] = tmp;
+}
+cursor += length;
+```
 
 ## Abort (`ABO`)
 
