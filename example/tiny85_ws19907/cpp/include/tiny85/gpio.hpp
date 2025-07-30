@@ -1,7 +1,7 @@
 #pragma once
 
-#ifndef SHAPOCO_ALWAYS_INLINE
-#define SHAPOCO_ALWAYS_INLINE inline __attribute__((always_inline))
+#ifndef GPIO_ALWAYS_INLINE
+#define GPIO_ALWAYS_INLINE inline __attribute__((always_inline))
 #endif
 
 #include <stdint.h>
@@ -9,11 +9,11 @@
 #include <avr/io.h>
 #include <util/delay.h>
 
-static SHAPOCO_ALWAYS_INLINE void delayMs(uint16_t ms) { _delay_ms(ms); }
+static GPIO_ALWAYS_INLINE void delayMs(uint16_t ms) { _delay_ms(ms); }
 
 namespace gpio {
 
-static SHAPOCO_ALWAYS_INLINE void setDirMulti(uint8_t portMask, bool output) {
+static GPIO_ALWAYS_INLINE void setDirMulti(uint8_t portMask, bool output) {
   if (output) {
     DDRB |= portMask;
   } else {
@@ -21,7 +21,7 @@ static SHAPOCO_ALWAYS_INLINE void setDirMulti(uint8_t portMask, bool output) {
   }
 }
 
-static SHAPOCO_ALWAYS_INLINE void writeMulti(uint8_t portMask, uint8_t value) {
+static GPIO_ALWAYS_INLINE void writeMulti(uint8_t portMask, uint8_t value) {
   if (value) {
     PORTB |= portMask;
   } else {
@@ -29,7 +29,7 @@ static SHAPOCO_ALWAYS_INLINE void writeMulti(uint8_t portMask, uint8_t value) {
   }
 }
 
-static SHAPOCO_ALWAYS_INLINE void write(uint8_t port, uint8_t value) {
+static GPIO_ALWAYS_INLINE void write(uint8_t port, uint8_t value) {
   writeMulti(1 << port, value);
 }
 

@@ -2,16 +2,8 @@
 
 // https://www.waveshare.com/wiki/Pico-ResTouch-LCD-3.5
 
-#ifndef SHAPOCO_ALWAYS_INLINE
-#define SHAPOCO_ALWAYS_INLINE inline __attribute__((always_inline))
-#endif
-
-#ifndef F_CPU
-#define F_CPU 20000000UL
-#endif
-
-#ifndef PROGMEM
-#define PROGMEM
+#ifndef ILI9488_ALWAYS_INLINE
+#define ILI9488_ALWAYS_INLINE inline __attribute__((always_inline))
 #endif
 
 #include <stdint.h>
@@ -123,7 +115,8 @@ enum class Command : uint8_t {
   ADJUST_CONTROL_7 = 0xFF,
 };
 
-static void clipCoord(coord_t *x, coord_t *w, coord_t max) {
+ILI9488_ALWAYS_INLINE static void clipCoord(coord_t *x, coord_t *w,
+                                            coord_t max) {
   if (*x < 0) {
     if (*x + *w <= 0) {
       *w = 0;
@@ -295,8 +288,12 @@ class Display {
     }
     commandEnd();
   }
-  void writeCommand(Command cmd) { writeCommand(cmd, nullptr, 0); }
-  void writeCommand(Command cmd, uint8_t data) { writeCommand(cmd, &data, 1); }
+  ILI9488_ALWAYS_INLINE void writeCommand(Command cmd) {
+    writeCommand(cmd, nullptr, 0);
+  }
+  ILI9488_ALWAYS_INLINE void writeCommand(Command cmd, uint8_t data) {
+    writeCommand(cmd, &data, 1);
+  }
 
   void commandStart(Command cmd) {
     gpio::writeMulti((1 << PORT_CS) | (1 << PORT_DC), 0);
@@ -305,7 +302,9 @@ class Display {
     gpio::write(PORT_DC, 1);
   }
 
-  void commandEnd() { gpio::writeMulti((1 << PORT_CS) | (1 << PORT_DC), 1); }
+  ILI9488_ALWAYS_INLINE void commandEnd() {
+    gpio::writeMulti((1 << PORT_CS) | (1 << PORT_DC), 1);
+  }
 };
 
 }  // namespace ili9488

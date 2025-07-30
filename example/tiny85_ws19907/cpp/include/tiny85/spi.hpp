@@ -1,7 +1,7 @@
 #pragma once
 
-#ifndef __AVR_ATtiny85__
-#define __AVR_ATtiny85__
+#ifndef SPI_ALWAYS_INLINE
+#define SPI_ALWAYS_INLINE inline __attribute__((always_inline))
 #endif
 
 #include <stdint.h>
@@ -13,7 +13,7 @@ static constexpr uint8_t PORT_SCK = 2;
 
 class SPI {
  public:
-  void init() {
+  SPI_ALWAYS_INLINE void init() {
     gpio::setDirMulti((1 << PORT_MOSI) | (1 << PORT_SCK), true);
     gpio::writeMulti((1 << PORT_MOSI) | (1 << PORT_SCK), 0);
   }
@@ -30,5 +30,5 @@ class SPI {
     }
   }
 
-  void writeBlocking(uint8_t data) { writeBlocking(&data, 1); }
+  SPI_ALWAYS_INLINE void writeBlocking(uint8_t data) { writeBlocking(&data, 1); }
 };
