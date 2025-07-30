@@ -117,7 +117,7 @@ The value of `lutSize` includes this dummy byte.
 
 ## Bytecode Block
 
-A Bytecode Block is the concatenation of all glyph bytecodes. If a Shrink Glyph Table is applied, the start of each glyph bytecode must be aligned to a 2-byte boundary.
+A Bytecode Block is the concatenation of all glyph bytecodes. When a Shrinked Glyph Table is applied, the first instruction in a glyph is aligned to a 2-byte boundary, but subsequent instructions are placed immediately after the previous instruction.
 
 |Size \[Bytes\]|Description|
 |:--:|:--|
@@ -126,6 +126,10 @@ A Bytecode Block is the concatenation of all glyph bytecodes. If a Shrink Glyph 
 # Instruction Set
 
 ## Summary
+
+Each instruction consists of 1 to 3 bytes. The first byte is the "OpCode", and the following bytes are parameters.
+
+### OpCode Map
 
 ![](./img/inst_map.svg)
 
