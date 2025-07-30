@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-#ifdef MAMEFONT_STM_DEBUG
+#ifdef MAMEFONT_DEBUG
 #include <stdio.h>
 #include <string.h>
 #endif
@@ -78,6 +78,8 @@ using prog_cntr_t = uint8_t;
 using prog_cntr_t = uint16_t;
 #endif
 
+#ifdef MAMEFONT_DEBUG
 const char *getMnemonic(Operator op);
+#endif
 
 }  // namespace mamefont

@@ -173,6 +173,13 @@ class Font {
       return *stride * h;
     }
   }
+
+#ifdef MAMEFONT_DEBUG
+  fragment_t getLutEntry(int index) const {
+    if (index < 0 || lutSize() <= index) return 0x00;
+    return mamefont_readBlobU8(blob + lutOffset() + index);
+  }
+#endif
 };
 
 struct GlyphBuffer {
@@ -271,9 +278,10 @@ class Renderer {
   Cursor writeCursor;
 
  public:
-#ifdef MAMEFONT_STM_DEBUG
+#ifdef MAMEFONT_DEBUG
   Cursor dbgDumpCursor;
   Operator *dbgOpLog = nullptr;
+  uint8_t lastInstByte1 = 0;
 #endif
 
   Renderer(const Font &font) {
@@ -325,7 +333,7 @@ class Renderer {
     lastFragment = 0x00;
     programCounter = glyph.entryPoint();
 
-#ifdef MAMEFONT_STM_DEBUG
+#ifdef MAMEFONT_DEBUG
     dbgDumpCursor = writeCursor;
     if (dbgOpLog) delete[] dbgOpLog;
     dbgOpLog = new Operator[buff.stride * fontHeight];
@@ -340,50 +348,51 @@ class Renderer {
 
     while (numLanesToGlyphEnd > 0) {
       uint8_t inst = mamefont_readBlobU8(bytecode + (programCounter++));
+#ifdef MAMEFONT_DEBUG
+      lastInstByte1 = inst;
+#endif
 
-      switch (inst & 0xf0) {
+      switch (inst & 0xF0) {
         case 0x00:
         case 0x10:
         case 0x20:
         case 0x30:
+          SFT(inst);
+          break;
+
+        case 0x80:
+        case 0x90:
+        case 0xA0:
+        case 0xB0:
           LUP(inst);
           break;
 
-        case 0x40:
-        case 0x50:
+        case 0xC0:
+        case 0xD0:
           LUD(inst);
           break;
 
-        case 0x60:
+        case 0xE0:
           RPT(inst);
           break;
 
-        case 0x70:
-          if (inst == 0x7f) {
-            return Status::UNKNOWN_OPCODE;
+        case 0xF0:
+          if (inst == 0xFF) {
+            return Status::ABORTED_BY_ABO;
           } else {
             XOR(inst);
           }
           break;
 
-        case 0x80:
-        case 0x90:
-        case 0xa0:
-        case 0xb0:
-          SFT(inst);
-          break;
-
-        case 0xc0:
-        case 0xd0:
-        case 0xe0:
-        case 0xf0:
-          if (inst == 0xc0) {
-            LDI(inst);
-          } else if (inst == 0xe0) {
+        case 0x40:
+        case 0x50:
+        case 0x60:
+        case 0x70:
+          if (inst == 0x40) {
             CPX(inst);
-          } else if (inst == 0xf0) {
-            return Status::ABORTED_BY_ABO;
-          } else if (inst == 0xe8 || inst == 0xf8) {
+          } else if (inst == 0x60) {
+            LDI(inst);
+          } else if (inst == 0x68 || inst == 0x70 || inst == 0x78) {
             return Status::UNKNOWN_OPCODE;
           } else {
             CPY(inst);
@@ -398,7 +407,7 @@ class Renderer {
   }
 
  private:
-#ifdef MAMEFONT_STM_DEBUG
+#ifdef MAMEFONT_DEBUG
 
 #define MAMEFONT_BEFORE_OP(opr, inst_size, fmt, ...)                         \
   do {                                                                       \

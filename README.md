@@ -127,26 +127,13 @@ A Bytecode Block is the concatenation of all glyph bytecodes. If a Shrink Glyph 
 
 ## Summary
 
-|1st. Byte|2nd. Byte|3rd. Byte|Mnemonic|Name|
-|:--:|:--:|:--:|:--:|:--|
-|0x00-3F|||`LUP`|Single Lookup|
-|0x40-5F|||`LUD`|Double Lookup|
-|0x60-6F|||`RPT`|Repeat Last Fragment|
-|0x70-7E|||`XOR`|XOR Last Fragment with Mask|
-|0x7F|||n/a|Reserved|
-|0x80-BF|||`SFT`|Shift Last Fragment|
-|0xC0|any||`LDI`|Load Immediate|
-|0xC1-DF,<br>0xE1-E7,<br>0xE9-EF,<br>0xF1-F7,<br>0xF9-FF|||`CPY`|Copy Recent|
-|0xE0|any|any|`CPX`|Long Distance Large Copy|
-|0xE8|||n/a|Reserved|
-|0xF0|||`ABO`|Abort|
-|0xF8|||n/a|Reserved|
+![](./img/inst_map.svg)
 
 ## Single Lookup (`LUP`)
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:6|0b00|
+|1st.|7:6|0b10|
 ||5:0|`index`|
 
 The state machine simply copies the fragment in the LUT to the glyph buffer. If msb1st=1 is set, the fragments in the LUT must also be MSB 1st.
@@ -163,7 +150,7 @@ buff[cursor++] = lut[index];
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:5|0b010|
+|1st.|7:5|0b110|
 ||4|`step`|
 ||3:0|`index`|
 
@@ -180,7 +167,7 @@ buff[cursor++] = lut[index + step];
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:0|0xC0|
+|1st.|7:0|0x60|
 |2nd.|7:0|Fragment|
 
 The state machine simply copies the second byte of the instruction code into the glyph buffer. If msb1st=1 is set, the fragment in the instruction code must also be MSB 1st.
@@ -197,7 +184,7 @@ buff[cursor++] = bytecode[programCounter++];
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:4|0b0110|
+|1st.|7:4|0b1110|
 ||3:0|`repeatCount` - 1|
 
 ![](./img/inst_rpt.svg)
@@ -212,7 +199,7 @@ cursor += repeatCount;
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:6|0b10|
+|1st.|7:6|0b00|
 ||5|`shiftDir` (0: Left, 1: Right)|
 ||4|`postOp` (0: Clear, 1: Set)|
 ||3:2|`shiftSize` - 1|
@@ -258,7 +245,7 @@ for (int i = 0; i < repeatCount; i++) {
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:4|0b0111|
+|1st.|7:4|0b1111|
 ||3|`maskWidth - 1`|
 ||2:0|`maskPos`|
 
@@ -277,13 +264,13 @@ buff[cursor++] = buff[cursor - 1] ^ (mask << maskPos);
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:6|0b11|
+|1st.|7:6|0b01|
 ||5|`byteReverse`|
 ||4:3|`offset`|
 ||2:0|`length` - 1|
 
-- for `byteReverse` = 0:<br>Combination of `offset=0` and `length=1` (0xC0) is reserved for other instruction or future use.
-- for `byteReverse` = 1:<br>`length=1` (0xE0, 0xE8, 0xF0, 0xF8) is reserved for other instruction or future use.
+- for `byteReverse` = 0:<br>Combination of `offset=0` and `length=1` (0x40) is reserved for other instruction or future use.
+- for `byteReverse` = 1:<br>`length=1` (0x60, 0x68, 0x70, 0x78) is reserved for other instruction or future use.
 
 ![](./img/inst_cpy.svg)
 
@@ -305,7 +292,7 @@ cursor += length;
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:0|0xE0|
+|1st.|7:0|0x40|
 |2nd.|7:0|`offset[7:0]`|
 |3rd.|7|`bitReverse`|
 ||6|`byteReverse`|
@@ -319,7 +306,7 @@ cursor += length;
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:0|0xF0|
+|1st.|7:0|0xFF|
 
 The decompressor must abort decompression when it encounters an `ABO` instruction.
 

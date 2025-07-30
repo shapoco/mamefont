@@ -17,6 +17,7 @@ Status drawChar(const Font &font, uint8_t c, const GlyphBuffer &buff,
   return renderer.render(glyph, buff);
 }
 
+#ifdef MAMEFONT_DEBUG
 const char *getMnemonic(Operator op) {
   // clang-format off
   switch (op) {
@@ -33,5 +34,6 @@ const char *getMnemonic(Operator op) {
   }
   // clang-format on
 }
+#endif
 
 }  // namespace mamefont
