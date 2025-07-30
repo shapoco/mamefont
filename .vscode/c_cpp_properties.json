@@ -5,6 +5,7 @@
             "includePath": [
                 "${AVR_GCC_PATH}/avr/include",
                 "${workspaceFolder}/cpp/include",
+                "${workspaceFolder}/example/mamedump/cpp/include",
                 "${workspaceFolder}/example/tiny402_ssd1306/cpp/include",
                 "${workspaceFolder}/example/tiny85_ws19907/cpp/include"
             ],
@@ -16,7 +17,7 @@
                 "-mmcu=attiny85"
             ],
             "defines": [
-                "MAMEFONT_STM_DEBUG"
+                "MAMEFONT_DEBUG"
             ]
         }
     ],
