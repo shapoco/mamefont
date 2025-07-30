@@ -131,6 +131,8 @@ Each instruction consists of 1 to 3 bytes. The first byte is the "OpCode", and t
 
 ### OpCode Map
 
+The number in parentheses indicates the length of the instruction in bytes.
+
 ![](./img/inst_map.svg)
 
 ## Single Lookup (`LUP`)
