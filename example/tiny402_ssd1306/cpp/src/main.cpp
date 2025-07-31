@@ -2,8 +2,8 @@
 #include <stdint.h>
 
 #include <mamefont/mamefont.hpp>
-#include <shapofont/ShapoSansDigitP_s16c14w2.hpp>
-#include <shapofont/ShapoSansP_s11c09w2a1.hpp>
+#include <shapofont/ShapoSansDigitP_s16c14w02.hpp>
+#include <shapofont/ShapoSansP_s12c09a01w02.hpp>
 #include <tiny402/i2c.hpp>
 #include <tiny402/ssd1306.hpp>
 
@@ -72,15 +72,15 @@ int main() {
 
   // Animation
   while (1) {
-    drawString(ShapoSansP_s11c09w2a1, text1, x1, 0);
+    drawString(ShapoSansP_s12c09a01w02, text1, x1, 0);
     x1 -= 1;
     if (x1 < -300) x1 = DISP_W;
 
-    drawString(ShapoSansP_s11c09w2a1, text2, x2, 2);
+    drawString(ShapoSansP_s12c09a01w02, text2, x2, 2);
     x2 -= 1;
     if (x2 < -300) x2 = DISP_W;
 
-    drawNumber(ShapoSansDigitP_s16c14w2, number++, 0, 5);
+    drawNumber(ShapoSansDigitP_s16c14w02, number++, 0, 5);
     _delay_ms(1);
   }
 }

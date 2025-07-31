@@ -14,7 +14,7 @@ rm -f ${CPP_SRC_DIR}/ShapoSans*.cpp
 mkdir -p ${CPP_INC_DIR}
 mkdir -p ${CPP_SRC_DIR}
 
-cp -f ${SHAPOFONT_DIR}/mamefont/cpp/VL/include/shapofont/ShapoSansP_s11c09w2a1.hpp ${CPP_INC_DIR}/.
-cp -f ${SHAPOFONT_DIR}/mamefont/cpp/VL/include/shapofont/ShapoSansDigitP_s16c14w2.hpp ${CPP_INC_DIR}/.
-cp -f ${SHAPOFONT_DIR}/mamefont/cpp/VL/src/ShapoSansP_s11c09w2a1.cpp ${CPP_SRC_DIR}/.
-cp -f ${SHAPOFONT_DIR}/mamefont/cpp/VL/src/ShapoSansDigitP_s16c14w2.cpp ${CPP_SRC_DIR}/.
+cp -f ${SHAPOFONT_DIR}/mamefont/cpp/VL/include/ShapoSansP_s12c09a01w02.hpp ${CPP_INC_DIR}/.
+cp -f ${SHAPOFONT_DIR}/mamefont/cpp/VL/include/ShapoSansDigitP_s16c14w02.hpp ${CPP_INC_DIR}/.
+cp -f ${SHAPOFONT_DIR}/mamefont/cpp/VL/src/ShapoSansP_s12c09a01w02.cpp ${CPP_SRC_DIR}/.
+cp -f ${SHAPOFONT_DIR}/mamefont/cpp/VL/src/ShapoSansDigitP_s16c14w02.cpp ${CPP_SRC_DIR}/.
