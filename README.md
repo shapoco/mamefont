@@ -54,17 +54,19 @@ A structure that provides information common to the entire font.
 |Index|Bit Range|Value|Description|
 |:--:|:--:|:--|:--|
 |\[0\]|7:6|(Reserved)||
-||5:0|`fontHeight` - 1|`fontHeight` is height of glyph in pixels|
+||5:0|`glyphHeight` - 1|`glyphHeight` is height of glyph in pixels|
 |\[1\]|7:6|(Reserved)||
-||5:0|`yAdvance` - 1|`yAdvance` is the distance in pixels from the top of the current line to the top of the next line|
+||5:0|`ySpacing`|`ySpacing` is the distance in pixels from the bottom of the current line to the top of the next line|
 |\[2\]|7:6|(Reserved)||
-||5:0|`maxGlyphWidth` - 1|`maxGlyphWidth` is `glyphWidth` value of widest glyph in the font|
+||5:0|`maxGlyphWidth` - 1|`maxGlyphWidth` is `glyphWidth` value of widest glyph in the font.|
 
-`yAdvance` may be smaller than `fontHeight`, but whether it is rendered as intended by the font designer depends on the implementation of the graphics engine.
+`glyphHeight` + `ySpacing` is same as `yAdvance` of GFXfont.
+
+`maxGlyphWidth` will be used by decompressor to determine size of Glyph Buffer. If the font does not contain any valid glyphs, then `maxGlyphWidth` must have a value of 1 (`fontDimension[2]` = 0x00).
 
 ## Glyph Table
 
-### Normal Table Entry (4 Byte)
+### Normal Table Entry (4 Bytes)
 
 |Size \[Bytes\]|Value|Description|
 |:--:|:--|:--|
@@ -78,25 +80,33 @@ A structure that provides information common to the entire font.
 |:--:|:--:|:--|:--|
 |\[0\]|7:6|(Reserved)||
 ||5:0|`glyphWidth` - 1|`glyphWidth` is glyph width in pixels|
-|\[1\]|7:6|(Reserved)||
-||5:0|`xAdvance` - 1|`xAdvance` is the distance in pixels from the left edge of the current character to the left edge of the next character|
+|\[1\]|7:5|`xLeftShift`|The glyph is rendered shifted to the left by the number of pixels specified by `xLeftShift`.|
+||4:0|`xSpacing` + 16|`xSpacing` is the distance in pixels from the right edge of the current glyph to the left edge of the next glyph. This must grater than `glyphWidth`.|
 
-`xAdvance` may be smaller than `glyphWidth`, but whether it is rendered as intended by the font designer depends on the implementation of the graphics engine.
+`glyphWidth` - `xLeftShift` + `xSpacing` is same as `xAdvance` of GFXfont. Depending on these values, rendered characters can overlap, but it is up to the renderer implementation to render this as the font designer expected.
 
-### Shrinked Table Entry (2 Byte)
+### Shrinked Table Entry (2 Bytes)
 
-The Shrinked Format of the Glyph Table can be applied when all glyphWidth and xAdvance in the font are 16 pixel or less, and the total size of the bytecode block is 512 Byte or less. In this case, all bytecode entry points must be aligned to 2-Byte boundaries.
+The Shrinked Format of the Glyph Table can be applied when all of the following conditions are met:
+
+- All `glyphWidth` in the font are in the range of 1 to 16.
+- All `xSpacing` in the font are in the range of 0 to 3.
+- All `xLeftShift` in the font are in the range of 0 to 3.
+- Total size of the Bytecode Block is 512 Byte or less.
+
+In this case, all of `entryPoint` must be aligned to 2-Byte boundaries.
 
 |Size \[Bytes\]|Value|Description|
 |:--:|:--|:--|
-|1|`entryPoint` &gt;&gt; 1|The value of entryPoint divided by 2. The true value of entryPoint must be a multiple of 2.|
+|1|`entryPoint` &gt;&gt; 1|The value of `entryPoint` divided by 2. `entryPoint` must be a multiple of 2.|
 |1|`packedGlyphDimension`|Dimension of the glyph|
 
 #### `packedGlyphDimension`
 
 |Bit Range|Value|Description|
 |:--:|:--|:--|
-|7:4|`xAdvance` - 1|See description of Normal Table Entry.|
+|7:6|`xLeftShift`|See description of Normal Table Entry.|
+|5:4|`xSpacing`|See description of Normal Table Entry.|
 |3:0|`glyphWidth` - 1|See description of Normal Table Entry.|
 
 ### Missing Glyph
@@ -105,8 +115,8 @@ To express that no valid glyph is assigned to a character code, the first two by
 
 This also means:
 
-- If not a Shrinked Glyph Table: entryPoint=0xFFFF cannot be used.
-- If a Shrinked Glyph Table: the combination of entryPoint=0x1FE, glyphWidth=16, xAdvance=16 cannot be used.
+- If not a Shrinked Glyph Table: `entryPoint`=0xFFFF cannot be used.
+- If a Shrinked Glyph Table: the combination of `entryPoint`=0x1FE, `glyphWidth`=16, `xSpacing`=16 cannot be used.
 
 Be careful as these can lead to corner case issues.
 
@@ -117,7 +127,7 @@ The value of `lutSize` includes this dummy byte.
 
 ## Bytecode Block
 
-A Bytecode Block is the concatenation of all glyph bytecodes. When a Shrinked Glyph Table is applied, the first instruction in a glyph is aligned to a 2-byte boundary, but subsequent instructions are placed immediately after the previous instruction.
+A Bytecode Block is the concatenation of all glyph bytecodes. When a Shrinked Glyph Table is applied, the first instruction in each glyph is aligned to a 2-byte boundary, but subsequent instructions are placed immediately after the previous instruction.
 
 |Size \[Bytes\]|Description|
 |:--:|:--|

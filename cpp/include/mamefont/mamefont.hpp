@@ -50,20 +50,28 @@ struct Glyph {
     return (blob != nullptr) && (readBlobU16(blob) != ENTRYPOINT_DUMMY);
   }
 
-  MAMEFONT_ALWAYS_INLINE uint8_t width() const {
+  MAMEFONT_ALWAYS_INLINE void getDimensions(int8_t *width,
+                                            int8_t *xSpacing) const {
     if (isShrinked) {
-      return (mamefont_readBlobU8(blob + 1) & 0x0f) + 1;
+      uint8_t dim = mamefont_readBlobU8(blob + 1);
+      if (width) *width = (dim & 0x0f) + 1;
+      if (xSpacing) *xSpacing = ((dim >> 4) & 0x03);
     } else {
-      return (mamefont_readBlobU8(blob + 2) & 0x3f) + 1;
+      if (width) *width = (mamefont_readBlobU8(blob + 2) & 0x3f) + 1;
+      if (xSpacing) *xSpacing = (mamefont_readBlobU8(blob + 3) & 0x1f) - 16;
     }
   }
 
-  MAMEFONT_ALWAYS_INLINE uint8_t xAdvance() const {
-    if (isShrinked) {
-      return ((mamefont_readBlobU8(blob + 1) >> 4) & 0x0f) + 1;
-    } else {
-      return (mamefont_readBlobU8(blob + 3) & 0x3f) + 1;
-    }
+  MAMEFONT_ALWAYS_INLINE uint8_t width() const {
+    int8_t ret;
+    getDimensions(&ret, nullptr);
+    return ret;
+  }
+
+  MAMEFONT_ALWAYS_INLINE uint8_t xSpacing() const {
+    int8_t ret;
+    getDimensions(nullptr, &ret);
+    return ret;
   }
 };
 
@@ -101,7 +109,7 @@ class Font {
     return mamefont_readBlobU8(blob + OFST_LUT_SIZE) + 1;
   }
 
-  MAMEFONT_ALWAYS_INLINE uint8_t fontHeight() const {
+  MAMEFONT_ALWAYS_INLINE uint8_t glyphHeight() const {
     return (mamefont_readBlobU8(blob + OFST_FONT_DIMENSION_0) & 0x3f) + 1;
   }
 
@@ -152,7 +160,7 @@ class Font {
 
   int16_t getRequiredGlyphBufferSize(const Glyph *glyph, int8_t *stride) const {
     int8_t w = glyph->width();
-    int8_t h = fontHeight();
+    int8_t h = glyphHeight();
     if (verticalFragment()) {
       *stride = w;
       return w * ((h + 7) / 8);
@@ -164,7 +172,7 @@ class Font {
 
   int16_t getRequiredGlyphBufferSize(int8_t *stride) const {
     int8_t w = maxGlyphWidth();
-    int8_t h = fontHeight();
+    int8_t h = glyphHeight();
     if (verticalFragment()) {
       *stride = w;
       return w * ((h + 7) / 8);
@@ -265,7 +273,7 @@ class Renderer {
   FontFlags flags;
   const fragment_t *lut;
   const uint8_t *bytecode;
-  uint8_t fontHeight;
+  uint8_t glyphHeight;
 
   uint8_t *buffData;
 
@@ -288,7 +296,7 @@ class Renderer {
     this->flags = font.flags();
     this->lut = font.blob + font.lutOffset();
     this->bytecode = font.blob + font.microCodeOffset();
-    this->fontHeight = font.fontHeight();
+    this->glyphHeight = font.glyphHeight();
 
 #ifdef MAMEFONT_HORIZONTAL_FRAGMENT_ONLY
     bool verticalFrag = false;
@@ -299,10 +307,10 @@ class Renderer {
 #endif
 
     if (verticalFrag) {
-      rule.lanesPerGlyph = (fontHeight + 7) / 8;
+      rule.lanesPerGlyph = (glyphHeight + 7) / 8;
       rule.fragStride = 1;
     } else {
-      rule.fragsPerLane = fontHeight;
+      rule.fragsPerLane = glyphHeight;
       rule.laneStride = 1;
     }
   }
@@ -336,8 +344,8 @@ class Renderer {
 #ifdef MAMEFONT_DEBUG
     dbgDumpCursor = writeCursor;
     if (dbgOpLog) delete[] dbgOpLog;
-    dbgOpLog = new Operator[buff.stride * fontHeight];
-    memset(dbgOpLog, 0, buff.stride * fontHeight * sizeof(Operator));
+    dbgOpLog = new Operator[buff.stride * glyphHeight];
+    memset(dbgOpLog, 0, buff.stride * glyphHeight * sizeof(Operator));
     printf("  entryPoint    : %d\n", programCounter);
     printf("  glyphWidth    : %d\n", glyphWidth);
     printf("  fragsPerLane  : %d\n", rule.fragsPerLane);

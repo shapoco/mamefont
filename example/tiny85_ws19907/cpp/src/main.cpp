@@ -51,16 +51,15 @@ const char* MSG_LINES[] = {
 
 static void drawString(const mf::Font& font, const char* str, coord_t x,
                        coord_t y, uint16_t fgColor, uint16_t bgColor) {
-  int8_t glyphWidth, xAdvance;
-  int8_t fontHeight = font.fontHeight();
+  int8_t glyphWidth, xSpacing;
+  int8_t glyphHeight = font.glyphHeight();
   for (const char* c = str; *c; c++) {
-    mf::drawChar(font, *c, glyphBuff, &glyphWidth, &xAdvance);
+    mf::drawChar(font, *c, glyphBuff, &glyphWidth, &xSpacing);
+    xSpacing -= 1;
     display.drawMonoImage(glyphBuff.data, MAX_GLYPH_COLS, x, y, glyphWidth,
-                          fontHeight, fgColor, bgColor);
-    xAdvance -= 3;
-    uint8_t spacing = xAdvance - glyphWidth;
-    display.fillRect(x + glyphWidth, y, spacing, fontHeight, bgColor);
-    x += xAdvance;
+                          glyphHeight, fgColor, bgColor);
+    display.fillRect(x + glyphWidth, y, xSpacing, glyphHeight, bgColor);
+    x += glyphWidth + xSpacing;
   }
 }
 
