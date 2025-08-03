@@ -22,7 +22,7 @@ MAMEFONT_HPP_LIST := $(wildcard $(MAMEFONT_INC_DIR)/mamefont/*.hpp)
 MAMEFONT_OBJ_LIST := $(patsubst $(MAMEFONT_SRC_DIR)/%.cpp,$(MAMEFONT_BUILD_DIR)/%.o,$(MAMEFONT_CPP_LIST))
 
 FONT_NAME := MameSansP_s48c40w08
-FONT_INC_DIR := ../../../../shapofont/mamefont/cpp/HL/include/shapofont
+FONT_INC_DIR := ../../../../shapofont/mamefont/cpp/HL/include
 FONT_SRC_DIR := ../../../../shapofont/mamefont/cpp/HL/src
 FONT_BUILD_DIR := $(APP_BUILD_DIR)/font
 FONT_HPP := $(FONT_INC_DIR)/$(FONT_NAME).hpp

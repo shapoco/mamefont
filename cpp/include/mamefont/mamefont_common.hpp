@@ -62,6 +62,29 @@ enum class Operator : int8_t {
   CPX,
 };
 
+struct GlyphDimensions {
+  int8_t width;
+  int8_t xSpacing;
+  int8_t xNegativeOffset;
+};
+
+template <typename T, int POS, int WIDTH, T BIAS = 0, T STEP = 1>
+struct Field {
+  static MAMEFONT_ALWAYS_INLINE T read(uint8_t value) {
+    value >>= POS;
+    value &= ((1 << WIDTH) - 1);
+    return BIAS + STEP * value;
+  }
+};
+
+using GLYPH_DIM_WIDTH = Field<uint8_t, 0, 6, 1>;
+using GLYPH_DIM_X_SPACING = Field<int8_t, 0, 5, -16>;
+using GLYPH_DIM_X_NEGATIVE_OFFSET = Field<uint8_t, 5, 3>;
+
+using GLYPH_SHRINKED_DIM_WIDTH = Field<uint8_t, 0, 4, 1>;
+using GLYPH_SHRINKED_DIM_X_SPACING = Field<int8_t, 4, 2>;
+using GLYPH_SHRINKED_DIM_X_NEGATIVE_OFFSET = Field<uint8_t, 6, 2>;
+
 using fragment_t = uint8_t;
 
 #ifdef MAMEFONT_32BIT_ADDR

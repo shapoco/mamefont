@@ -80,10 +80,10 @@ A structure that provides information common to the entire font.
 |:--:|:--:|:--|:--|
 |\[0\]|7:6|(Reserved)||
 ||5:0|`glyphWidth` - 1|`glyphWidth` is glyph width in pixels|
-|\[1\]|7:5|`xLeftShift`|The glyph is rendered shifted to the left by the number of pixels specified by `xLeftShift`.|
+|\[1\]|7:5|`xNegativeOffset`|The glyph is rendered shifted to the left by the number of pixels specified by `xNegativeOffset`.|
 ||4:0|`xSpacing` + 16|`xSpacing` is the distance in pixels from the right edge of the current glyph to the left edge of the next glyph. This must grater than `glyphWidth`.|
 
-`glyphWidth` - `xLeftShift` + `xSpacing` is same as `xAdvance` of GFXfont. Depending on these values, rendered characters can overlap, but it is up to the renderer implementation to render this as the font designer expected.
+`glyphWidth` - `xNegativeOffset` + `xSpacing` is same as `xAdvance` of GFXfont. Depending on these values, rendered characters can overlap, but it is up to the renderer implementation to render this as the font designer expected.
 
 ### Shrinked Table Entry (2 Bytes)
 
@@ -91,7 +91,7 @@ The Shrinked Format of the Glyph Table can be applied when all of the following 
 
 - All `glyphWidth` in the font are in the range of 1 to 16.
 - All `xSpacing` in the font are in the range of 0 to 3.
-- All `xLeftShift` in the font are in the range of 0 to 3.
+- All `xNegativeOffset` in the font are in the range of 0 to 3.
 - Total size of the Bytecode Block is 512 Byte or less.
 
 In this case, all of `entryPoint` must be aligned to 2-Byte boundaries.
@@ -105,7 +105,7 @@ In this case, all of `entryPoint` must be aligned to 2-Byte boundaries.
 
 |Bit Range|Value|Description|
 |:--:|:--|:--|
-|7:6|`xLeftShift`|See description of Normal Table Entry.|
+|7:6|`xNegativeOffset`|See description of Normal Table Entry.|
 |5:4|`xSpacing`|See description of Normal Table Entry.|
 |3:0|`glyphWidth` - 1|See description of Normal Table Entry.|
 

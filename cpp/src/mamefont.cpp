@@ -3,14 +3,14 @@
 namespace mamefont {
 
 Status drawChar(const Font &font, uint8_t c, const GlyphBuffer &buff,
-                int8_t *glyphWidth, int8_t *xSpacing) {
+                GlyphDimensions *dims) {
   Glyph glyph;
   Status status = font.getGlyph(c, &glyph);
   if (status != Status::SUCCESS) return status;
 
   if (!glyph.isValid()) return Status::GLYPH_NOT_DEFINED;
 
-  glyph.getDimensions(glyphWidth, xSpacing);
+  if (dims) glyph.getDimensions(dims);
 
   Renderer renderer(font);
   return renderer.render(glyph, buff);

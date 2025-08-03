@@ -50,28 +50,25 @@ struct Glyph {
     return (blob != nullptr) && (readBlobU16(blob) != ENTRYPOINT_DUMMY);
   }
 
-  MAMEFONT_ALWAYS_INLINE void getDimensions(int8_t *width,
-                                            int8_t *xSpacing) const {
+  MAMEFONT_ALWAYS_INLINE void getDimensions(GlyphDimensions *dims) const {
     if (isShrinked) {
       uint8_t dim = mamefont_readBlobU8(blob + 1);
-      if (width) *width = (dim & 0x0f) + 1;
-      if (xSpacing) *xSpacing = ((dim >> 4) & 0x03);
+      dims->width = GLYPH_SHRINKED_DIM_WIDTH::read(dim);
+      dims->xSpacing = GLYPH_SHRINKED_DIM_X_SPACING::read(dim);
+      dims->xNegativeOffset = GLYPH_SHRINKED_DIM_X_NEGATIVE_OFFSET::read(dim);
     } else {
-      if (width) *width = (mamefont_readBlobU8(blob + 2) & 0x3f) + 1;
-      if (xSpacing) *xSpacing = (mamefont_readBlobU8(blob + 3) & 0x1f) - 16;
+      uint8_t dim0 = mamefont_readBlobU8(blob + 2);
+      dims->width = GLYPH_DIM_WIDTH::read(dim0);
+      uint8_t dim1 = mamefont_readBlobU8(blob + 3);
+      dims->xSpacing = GLYPH_DIM_X_SPACING::read(dim1);
+      dims->xNegativeOffset = GLYPH_DIM_X_NEGATIVE_OFFSET::read(dim1);
     }
   }
 
   MAMEFONT_ALWAYS_INLINE uint8_t width() const {
-    int8_t ret;
-    getDimensions(&ret, nullptr);
-    return ret;
-  }
-
-  MAMEFONT_ALWAYS_INLINE uint8_t xSpacing() const {
-    int8_t ret;
-    getDimensions(nullptr, &ret);
-    return ret;
+    GlyphDimensions dims;
+    getDimensions(&dims);
+    return dims.width;
   }
 };
 
@@ -634,6 +631,6 @@ class Renderer {
 };
 
 Status drawChar(const Font &font, uint8_t c, const GlyphBuffer &buff,
-                int8_t *glyphWidth = nullptr, int8_t *xAdvance = nullptr);
+                GlyphDimensions *dims = nullptr);
 
 }  // namespace mamefont

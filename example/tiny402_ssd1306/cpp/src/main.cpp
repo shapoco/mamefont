@@ -23,14 +23,15 @@ mf::GlyphBuffer glyphBuff;
 
 static void drawString(const mf::Font& font, const char* str, int16_t x,
                        int8_t row) {
-  int8_t glyphWidth, xSpacing;
+  mf::GlyphDimensions dims;
   int8_t rows = (font.glyphHeight() + 7) / 8;
   for (const char* c = str; *c; c++) {
-    mf::drawChar(font, *c, glyphBuff, &glyphWidth, &xSpacing);
-    display.drawImage(glyphBuff.data, x, row, MAX_GLYPH_WIDTH, glyphWidth,
+    mf::drawChar(font, *c, glyphBuff, &dims);
+    x -= dims.xNegativeOffset;
+    display.drawImage(glyphBuff.data, x, row, MAX_GLYPH_WIDTH, dims.width,
                       rows);
-    display.fillRect(x + glyphWidth, row, xSpacing, rows, 0x00);
-    x += glyphWidth + xSpacing;
+    display.fillRect(x + dims.width, row, dims.xSpacing, rows, 0x00);
+    x += dims.width + dims.xSpacing;
   }
 }
 

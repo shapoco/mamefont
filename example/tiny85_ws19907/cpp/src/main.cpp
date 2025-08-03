@@ -43,23 +43,23 @@ const char MSG_LINE0[] PROGMEM = "8kByte ROM and 512";
 const char MSG_LINE1[] PROGMEM = "Byte RAM of ATtiny";
 const char MSG_LINE2[] PROGMEM = "85 are enough to fill a";
 const char MSG_LINE3[] PROGMEM = "480x320px SPI-LCD";
-const char MSG_LINE4[] PROGMEM = "with lots of large 48px";
-const char MSG_LINE5[] PROGMEM = "high characters.";
+const char MSG_LINE4[] PROGMEM = "with lots of large 48-";
+const char MSG_LINE5[] PROGMEM = "px high characters.";
 const char* MSG_LINES[] = {
     MSG_LINE0, MSG_LINE1, MSG_LINE2, MSG_LINE3, MSG_LINE4, MSG_LINE5,
 };
 
 static void drawString(const mf::Font& font, const char* str, coord_t x,
                        coord_t y, uint16_t fgColor, uint16_t bgColor) {
-  int8_t glyphWidth, xSpacing;
+  mf::GlyphDimensions dims;
   int8_t glyphHeight = font.glyphHeight();
   for (const char* c = str; *c; c++) {
-    mf::drawChar(font, *c, glyphBuff, &glyphWidth, &xSpacing);
-    xSpacing -= 1;
-    display.drawMonoImage(glyphBuff.data, MAX_GLYPH_COLS, x, y, glyphWidth,
+    mf::drawChar(font, *c, glyphBuff, &dims);
+    x -= dims.xNegativeOffset;
+    display.drawMonoImage(glyphBuff.data, MAX_GLYPH_COLS, x, y, dims.width,
                           glyphHeight, fgColor, bgColor);
-    display.fillRect(x + glyphWidth, y, xSpacing, glyphHeight, bgColor);
-    x += glyphWidth + xSpacing;
+    display.fillRect(x + dims.width, y, dims.xSpacing, glyphHeight, bgColor);
+    x += dims.width + dims.xSpacing;
   }
 }
 
