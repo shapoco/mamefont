@@ -2,7 +2,7 @@
 
 namespace mamefont {
 
-Status drawChar(const Font &font, uint8_t c, const GlyphBuffer &buff,
+Status extractGlyph(const Font &font, uint8_t c, const GlyphBuffer &buff,
                 GlyphDimensions *dims) {
   Glyph glyph;
   Status status = font.getGlyph(c, &glyph);
@@ -12,8 +12,8 @@ Status drawChar(const Font &font, uint8_t c, const GlyphBuffer &buff,
 
   if (dims) glyph.getDimensions(dims);
 
-  Renderer renderer(font);
-  return renderer.render(glyph, buff);
+  StateMachine stm(font);
+  return stm.run(glyph, buff);
 }
 
 #ifdef MAMEFONT_DEBUG

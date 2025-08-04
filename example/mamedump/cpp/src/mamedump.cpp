@@ -16,7 +16,7 @@ int main(int argc, char** argv) {
   int codeOffset = font.firstCode();
   bool verticalFragment = font.verticalFragment();
 
-  printf("font32.glyphHeight()       : %d\n", glyphHeight);
+  printf("font32.glyphHeight()      : %d\n", glyphHeight);
   printf("font32.glyphTableLen()    : %d\n", numChars);
   printf("font32.firstCode()        : %d\n", codeOffset);
   printf("font32.verticalFragment() : %d\n", verticalFragment);
@@ -56,11 +56,11 @@ int main(int argc, char** argv) {
       glyphBuff.data = buff;
       glyphBuff.stride = stride;
 
-      mamefont::Renderer renderer(font);
-      ret = renderer.render(glyph, glyphBuff);
+      mamefont::StateMachine stm(font);
+      ret = stm.run(glyph, glyphBuff);
       if (ret != mamefont::Status::SUCCESS) {
         printf("  *ERROR CODE: 0x%02X (lastInstByte1=0x%02X)\n", (int)ret,
-               (int)renderer.lastInstByte1);
+               (int)stm.lastInstByte1);
         return 1;
       }
 
@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
             bit = (buff[iBuff] >> iBit) & 0x1;
           }
 
-          auto opr = renderer.dbgOpLog[iBuff];
+          auto opr = stm.dbgOpLog[iBuff];
           int nw = X_ZOOM;
           if (iBit == 0 && opr != mamefont::Operator::NONE) {
             nw -= printf("%-3s", mamefont::getMnemonic(opr));

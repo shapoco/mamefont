@@ -8,7 +8,7 @@
 #endif
 
 #define MAMEFONT_ALWAYS_INLINE inline __attribute__((always_inline))
-#define MAMEFONT_NOINLINE inline __attribute__((noinline))
+#define MAMEFONT_NOINLINE __attribute__((noinline))
 
 namespace mamefont {
 

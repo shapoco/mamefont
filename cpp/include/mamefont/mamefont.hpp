@@ -157,9 +157,9 @@ class Font {
   }
 
   frag_index_t getRequiredGlyphBufferSize(const Glyph *glyph,
-                                          int8_t *stride) const {
-    int8_t w = glyph ? glyph->width() : maxGlyphWidth();
-    int8_t h = glyphHeight();
+                                          uint8_t *stride) const {
+    uint8_t w = glyph ? glyph->width() : maxGlyphWidth();
+    uint8_t h = glyphHeight();
     if (verticalFragment()) {
       h = (h + 7) / 8;
     } else {
@@ -169,7 +169,7 @@ class Font {
     return w * h;
   }
 
-  frag_index_t getRequiredGlyphBufferSize(int8_t *stride) const {
+  frag_index_t getRequiredGlyphBufferSize(uint8_t *stride) const {
     return getRequiredGlyphBufferSize(nullptr, stride);
   }
 
@@ -267,7 +267,7 @@ struct Cursor {
   }
 };
 
-class Renderer {
+class StateMachine {
  private:
   FontFlags flags;
   const fragment_t *lut;
@@ -291,7 +291,7 @@ class Renderer {
   uint8_t lastInstByte1 = 0;
 #endif
 
-  Renderer(const Font &font) {
+  StateMachine(const Font &font) {
     this->flags = font.flags();
     this->lut = font.blob + font.lutOffset();
     this->bytecode = font.blob + font.microCodeOffset();
@@ -318,7 +318,7 @@ class Renderer {
     }
   }
 
-  Status render(Glyph &glyph, const GlyphBuffer &buff) {
+  Status run(Glyph &glyph, const GlyphBuffer &buff) {
     buffData = buff.data;
 
 #ifdef MAMEFONT_HORIZONTAL_FRAGMENT_ONLY
@@ -684,7 +684,7 @@ class Renderer {
   }
 };
 
-Status drawChar(const Font &font, uint8_t c, const GlyphBuffer &buff,
-                GlyphDimensions *dims = nullptr);
+Status extractGlyph(const Font &font, uint8_t c, const GlyphBuffer &buff,
+                    GlyphDimensions *dims = nullptr);
 
 }  // namespace mamefont

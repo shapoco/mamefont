@@ -54,7 +54,7 @@ static void drawString(const mf::Font& font, const char* str, coord_t x,
   mf::GlyphDimensions dims;
   int8_t glyphHeight = font.glyphHeight();
   for (const char* c = str; *c; c++) {
-    mf::drawChar(font, *c, glyphBuff, &dims);
+    mf::extractGlyph(font, *c, glyphBuff, &dims);
     x -= dims.xNegativeOffset;
     display.drawMonoImage(glyphBuff.data, MAX_GLYPH_COLS, x, y, dims.width,
                           glyphHeight, fgColor, bgColor);

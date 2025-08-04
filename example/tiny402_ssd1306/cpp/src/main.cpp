@@ -26,7 +26,7 @@ static void drawString(const mf::Font& font, const char* str, int16_t x,
   mf::GlyphDimensions dims;
   int8_t rows = (font.glyphHeight() + 7) / 8;
   for (const char* c = str; *c; c++) {
-    mf::drawChar(font, *c, glyphBuff, &dims);
+    mf::extractGlyph(font, *c, glyphBuff, &dims);
     x -= dims.xNegativeOffset;
     display.drawImage(glyphBuff.data, x, row, MAX_GLYPH_WIDTH, dims.width,
                       rows);
