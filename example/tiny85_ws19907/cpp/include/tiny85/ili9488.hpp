@@ -239,6 +239,7 @@ class Display {
 
     setAddress(x, y, w, h);
     commandStart(Command::MEMORY_WRITE);
+    uint8_t buffSize = 0;
     for (coord_t iy = h; iy != 0; iy--) {
       const uint8_t *pixelPtr = linePtr;
       uint8_t byte;
@@ -248,11 +249,17 @@ class Display {
         }
         uint16_t color = (byte & 1) ? fgColor : bgColor;
         byte >>= 1;
-        spiBuff[0] = color >> 8;
-        spiBuff[1] = color & 0xFF;
-        spi.writeBlocking(spiBuff, 2);
+        spiBuff[buffSize++] = color >> 8;
+        spiBuff[buffSize++] = color & 0xFF;
+        buffSize %= SPI_BUFF_SIZE;
+        if (buffSize == 0) {
+          spi.writeBlocking(spiBuff, SPI_BUFF_SIZE);
+        }
       }
       linePtr += stride;
+    }
+    if (buffSize > 0) {
+      spi.writeBlocking(spiBuff, buffSize);
     }
     commandEnd();
   }

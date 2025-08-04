@@ -8,7 +8,7 @@
 
 #include <tiny85/gpio.hpp>
 
-static constexpr uint8_t PORT_MOSI = 0;
+static constexpr uint8_t PORT_MOSI = 1;
 static constexpr uint8_t PORT_SCK = 2;
 
 class SPI {
@@ -19,7 +19,30 @@ class SPI {
   }
 
   void writeBlocking(const uint8_t *data, uint8_t size) {
-    for (int8_t i = size; i != 0; i--) {
+#if 1
+    constexpr uint8_t clkH = (1 << USIWM0) | (1 << USITC);
+    constexpr uint8_t clkL = (1 << USIWM0) | (1 << USITC) | (1 << USICLK);
+    for (uint8_t i = size; i != 0; i--) {
+      USIDR = *(data++);
+      USICR = clkH;
+      USICR = clkL;
+      USICR = clkH;
+      USICR = clkL;
+      USICR = clkH;
+      USICR = clkL;
+      USICR = clkH;
+      USICR = clkL;
+      USICR = clkH;
+      USICR = clkL;
+      USICR = clkH;
+      USICR = clkL;
+      USICR = clkH;
+      USICR = clkL;
+      USICR = clkH;
+      USICR = clkL;
+    }
+#else
+    for (uint8_t i = size; i != 0; i--) {
       uint8_t byte = *(data++);
       for (int8_t j = 8; j != 0; j--) {
         gpio::write(PORT_MOSI, byte & 0x80);
@@ -28,7 +51,10 @@ class SPI {
         gpio::write(PORT_SCK, 0);
       }
     }
+#endif
   }
 
-  SPI_ALWAYS_INLINE void writeBlocking(uint8_t data) { writeBlocking(&data, 1); }
+  SPI_ALWAYS_INLINE void writeBlocking(uint8_t data) {
+    writeBlocking(&data, 1);
+  }
 };
