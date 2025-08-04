@@ -25,6 +25,7 @@ const char *getMnemonic(Operator op) {
     case Operator::CPY:  return "CPY";
     case Operator::XOR:  return "XOR";
     case Operator::SFT:  return "SFT";
+    case Operator::SFI:  return "SFI";
     case Operator::LUP:  return "LUP";
     case Operator::LUD:  return "LUD";
     case Operator::LDI:  return "LDI";

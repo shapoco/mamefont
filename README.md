@@ -156,12 +156,6 @@ The state machine simply copies the fragment in the LUT to the glyph buffer. If 
 
 ![](./img/inst_lup.svg)
 
-### Pseudo Code
-
-```c
-buff[cursor++] = lut[index];
-```
-
 ## Double Lookup (`LUD`)
 
 |Byte|Bit Range|Value|
@@ -171,13 +165,6 @@ buff[cursor++] = lut[index];
 ||3:0|`index`|
 
 ![](./img/inst_lud.svg)
-
-### Pseudo Code
-
-```c
-buff[cursor++] = lut[index];
-buff[cursor++] = lut[index + step];
-```
 
 ## Load Immediate (`LDI`)
 
@@ -190,12 +177,6 @@ The state machine simply copies the second byte of the instruction code into the
 
 ![](./img/inst_ldi.svg)
 
-### Pseudo Code
-
-```c
-buff[cursor++] = bytecode[programCounter++];
-```
-
 ## Repeat Last Fragment (`RPT`)
 
 |Byte|Bit Range|Value|
@@ -205,12 +186,6 @@ buff[cursor++] = bytecode[programCounter++];
 
 ![](./img/inst_rpt.svg)
 
-### Pseudo Code
-
-```c
-memset(buff + cursor, buff[cursor - 1], repeatCount);
-cursor += repeatCount;
-```
 ## Shift Last Fragment (`SFT`)
 
 |Byte|Bit Range|Value|
@@ -225,37 +200,18 @@ When `shiftDir`=0, SFT shifts the fragment towards the LSB direction, other is t
 
 ![](./img/inst_sft.svg)
 
-### Visual direction of pixel movement
+## Shift Last Fragment with Intervals (`SFI`)
 
-|`verticalFragment`|`msb1st`|`shiftDir`=0|`shiftDir`=1|
-|:--:|:--:|:--:|:--:|
-|0 (Horizontal)|0 (LSB first)|Right|Left|
-|0 (Horizontal)|1 (MSB first)|Left|Right|
-|1 (Vertical)|0 (LSB first)|Down|Up|
-|1 (Vertical)|1 (MSB first)|Up|Down|
+|Byte|Bit Range|Value|
+|:--:|:--:|:--|
+|1st.|7:0|0x68|
+|2nd.|7:6|`interval` - 2|
+||5|`shiftDir` (0: Left, 1: Right)|
+||4|`postOp` (0: Clear, 1: Set)|
+||3|`shift1st`|
+||2:0|`repeatCount` - 1|
 
-### Pseudo Code
-
-```c
-uint8_t modifier = (1 << shiftSize) - 1;
-if (shiftDir != 0) modifier <<= (8 - shiftSize);
-if (postOp == 0) modifier = ~modifier;
-for (int i = 0; i < repeatCount; i++) {
-    if (shiftDir == 0) {
-        buff[cursor] = buff[cursor - 1] << shiftSize;
-    }
-    else {
-        buff[cursor] = buff[cursor - 1] >> shiftSize;
-    }
-    if (postOp == 0) {
-        buff[cursor] &= modifier;
-    }
-    else {
-        buff[cursor] |= modifier;
-    }
-    cursor++;
-}
-```
+![](./img/inst_sfi.svg)
 
 ## XOR Last Fragment with Mask (`XOR`)
 
@@ -268,13 +224,6 @@ for (int i = 0; i < repeatCount; i++) {
 Combination of `maskWidth=2` and `maskPos=7` (0xFF) is reserved for other instruction or future use.
 
 ![](./img/inst_xor.svg)
-
-### Pseudo Code
-
-```c
-int mask = (1 << maskWidth) - 1;
-buff[cursor++] = buff[cursor - 1] ^ (mask << maskPos);
-```
 
 ## Copy Recent (`CPY`)
 
@@ -290,20 +239,6 @@ buff[cursor++] = buff[cursor - 1] ^ (mask << maskPos);
 
 ![](./img/inst_cpy.svg)
 
-### Pseudo Code
-
-```c
-if (byteReverse) {
-    for (int i = 0; i < length; i++) {
-        buff[cursor + i] = buff[cursor - offset - 1 - i];
-    }
-}
-else {
-    memcpy(buff + cursor, buff + (cursor - length - offset), length);
-}
-cursor += length;
-```
-
 ## Long Distance Large Copy (`CPX`)
 
 |Byte|Bit Range|Value|
@@ -317,30 +252,6 @@ cursor += length;
 ||0|`offset[8]`|
 
 ![](./img/inst_cpx.svg)
-
-### Pseudo Code
-
-```c
-for (int i = 0; i < length; i++) {
-    uint8_t tmp;
-    if (byteReverse) {
-        tmp = buff[cursor - offset + length - 1 - i];
-    }
-    else {
-        tmp = buff[cursor - offset + i];
-    }
-    if (bitReverse) {
-        tmp = ((tmp << 4) & 0xF0) | ((tmp >> 4) & 0x0F);
-        tmp = ((tmp << 2) & 0xCC) | ((tmp >> 2) & 0x33);
-        tmp = ((tmp << 1) & 0xAA) | ((tmp >> 1) & 0x55);
-    }
-    if (inverse) {
-        tmp = ~tmp;
-    }
-    buff[cursor + i] = tmp;
-}
-cursor += length;
-```
 
 ## Abort (`ABO`)
 
