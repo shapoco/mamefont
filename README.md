@@ -205,10 +205,10 @@ When `shiftDir`=0, SFT shifts the fragment towards the LSB direction, other is t
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
 |1st.|7:0|0x68|
-|2nd.|7:6|`interval` - 2|
+|2nd.|7:6|`period` - 2|
 ||5|`shiftDir` (0: Left, 1: Right)|
 ||4|`postOp` (0: Clear, 1: Set)|
-||3|`shift1st`|
+||3|`preShift`|
 ||2:0|`repeatCount` - 1|
 
 ![](./img/inst_sfi.svg)
