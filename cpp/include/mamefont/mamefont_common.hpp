@@ -30,13 +30,6 @@ static constexpr uint8_t OFST_ENTRY_POINT = 0;
 static constexpr uint8_t OFST_GLYPH_DIMENSION_0 = 2;
 static constexpr uint8_t OFST_GLYPH_DIMENSION_1 = 3;
 
-static constexpr uint8_t CPX_BIT_REVERSAL_MASK = (1 << 7);
-static constexpr uint8_t CPX_BYTE_REVERSAL_MASK = (1 << 6);
-static constexpr uint8_t CPX_LENGTH_MASK = ((1 << 4) - 1) << 2;
-static constexpr uint8_t CPX_LENGTH_BIAS = 4;
-static constexpr uint8_t CPX_INVERSE_MASK = (1 << 1);
-static constexpr uint8_t CPX_OFFSET_H_MASK = (1 << 0);
-
 enum FontFlags : uint8_t {
   FONT_FLAG_VERTICAL_FRAGMENT = 0x80,
   FONT_FLAG_MSB1ST = 0x40,
@@ -119,8 +112,19 @@ using SFI_PERIOD = Field<uint8_t, 6, 2, 2>;
 
 using RPT_REPEAT_COUNT = Field<uint8_t, 0, 4, 1>;
 
-using XOR_WIDTH_2BIT = FlagBit<3>;
 using XOR_POS = Field<uint8_t, 0, 3>;
+using XOR_WIDTH_2BIT = FlagBit<3>;
+
+using CPY_LENGTH = Field<uint8_t, 0, 3, 1>;
+using CPY_OFFSET = Field<uint8_t, 3, 2>;
+using CPY_BYTE_REVERSE = FlagBit<5>;
+
+using CPX_OFFSET_H = Field<uint8_t, 0, 1>;
+using CPX_INVERSE = FlagBit<1>;
+static constexpr uint8_t CPX_LENGTH_MASK = ((1 << 4) - 1) << 2;
+static constexpr uint8_t CPX_LENGTH_BIAS = 4;
+using CPX_BYTE_REVERSE = FlagBit<6>;
+using CPX_BIT_REVERSE = FlagBit<7>;
 
 using fragment_t = uint8_t;
 

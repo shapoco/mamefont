@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     printf("\n");
   }
 
-  int8_t stride;
+  uint8_t stride;
   uint8_t buff[font.getRequiredGlyphBufferSize(&stride) * 2];
 
   constexpr int X_ZOOM = 3;

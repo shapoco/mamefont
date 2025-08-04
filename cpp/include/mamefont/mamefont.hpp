@@ -478,25 +478,35 @@ class StateMachine {
 
 #endif
 
-  MAMEFONT_ALWAYS_INLINE void LUP(uint8_t inst) {
-    MAMEFONT_BEFORE_OP(Operator::LUP, 1, "(idx=%d)",
-                       (int)LUP_INDEX::read(inst));
-    write(mamefont_readBlobU8(lut + LUP_INDEX::read(inst)));
+  MAMEFONT_ALWAYS_INLINE
+  void LUP(uint8_t inst) {
+    uint8_t index = LUP_INDEX::read(inst);
+
+    MAMEFONT_BEFORE_OP(Operator::LUP, 1, "(idx=%d)", (int)index);
+
+    write(mamefont_readBlobU8(lut + index));
+
     MAMEFONT_AFTER_OP(1);
   }
 
-  MAMEFONT_ALWAYS_INLINE void LUD(uint8_t inst) {
-    MAMEFONT_BEFORE_OP(Operator::LUD, 1, "(idx=%d, step=%d)",
-                       (int)LUD_INDEX::read(inst),
-                       (LUD_STEP::read(inst) ? 1 : 0));
-    const fragment_t *ptr = lut + LUD_INDEX::read(inst);
+  MAMEFONT_ALWAYS_INLINE
+  void LUD(uint8_t inst) {
+    uint8_t index = LUD_INDEX::read(inst);
+    bool step = LUD_STEP::read(inst);
+
+    MAMEFONT_BEFORE_OP(Operator::LUD, 1, "(idx=%d, step=%d)", (int)index,
+                       (step ? 1 : 0));
+
+    const fragment_t *ptr = lut + index;
     write(mamefont_readBlobU8(ptr));
-    if (LUD_STEP::read(inst)) ptr++;
+    if (step) ptr++;
     write(mamefont_readBlobU8(ptr));
+
     MAMEFONT_AFTER_OP(2);
   }
 
-  MAMEFONT_ALWAYS_INLINE void SFT(uint8_t inst) {
+  MAMEFONT_ALWAYS_INLINE
+  void SFT(uint8_t inst) {
     uint8_t size = SFT_SIZE::read(inst);
     uint8_t rpt = SFT_REPEAT_COUNT::read(inst);
     uint8_t flags = inst & (SFT_RIGHT::MASK | SFT_POST_SET::MASK);
@@ -512,7 +522,8 @@ class StateMachine {
   }
 
 #ifndef MAMEFONT_NO_SFI
-  MAMEFONT_ALWAYS_INLINE void SFI(uint8_t inst) {
+  MAMEFONT_ALWAYS_INLINE
+  void SFI(uint8_t inst) {
     uint8_t byte2 = mamefont_readBlobU8(bytecode + (programCounter + 0));
     uint8_t rpt = SFI_REPEAT_COUNT::read(byte2);
     uint8_t period = SFI_PERIOD::read(byte2);
@@ -533,6 +544,7 @@ class StateMachine {
   }
 #endif
 
+  MAMEFONT_NOINLINE
   void shiftCore(uint8_t flags, uint8_t size, uint8_t rpt, uint8_t period) {
     bool right = SFT_RIGHT::read(flags);
     fragment_t modifier = getRightMask(right ? (8 - size) : size);
@@ -568,74 +580,70 @@ class StateMachine {
     } while (rpt != 0);
   }
 
-  MAMEFONT_ALWAYS_INLINE void CPY(uint8_t inst) {
-    uint8_t offset = (inst >> 3) & 0x3;
-    uint8_t length = (inst & 0x07) + 1;
-    uint8_t reverse = (inst & 0x20) != 0;
+  MAMEFONT_ALWAYS_INLINE
+  void CPY(uint8_t inst) {
+    uint8_t offset = CPY_OFFSET::read(inst);
+    uint8_t length = CPY_LENGTH::read(inst);
+    bool reverse = CPY_BYTE_REVERSE::read(inst);
 
-    MAMEFONT_BEFORE_OP(Operator::CPY, 1, "(ofst=%d, len=%d, rev=%d)", offset,
-                       length, reverse);
+    MAMEFONT_BEFORE_OP(Operator::CPY, 1, "(ofst=%d, len=%d, rev=%d)",
+                       (int)offset, (int)length, (reverse ? 1 : 0));
 
+    uint8_t flags;
     if (reverse) {
-      Cursor readCursor = writeCursor;
-      readCursor.add(rule, -offset);
-      for (int8_t i = length; i != 0; i--) {
-        write(readPreDecr(readCursor));
-      }
+      flags = CPX_BYTE_REVERSE::MASK;
     } else {
-      Cursor readCursor = writeCursor;
-      readCursor.add(rule, -length - offset);
-      for (int8_t i = length; i != 0; i--) {
-        write(readPostIncr(readCursor));
-      }
+      flags = 0;
+      offset += length;
     }
+    copyCore(flags, -offset, length);
 
     MAMEFONT_AFTER_OP(length);
   }
 
 #ifndef MAMEFONT_NO_CPX
-  MAMEFONT_ALWAYS_INLINE void CPX(uint8_t inst) {
+  MAMEFONT_ALWAYS_INLINE
+  void CPX(uint8_t inst) {
     uint8_t byte2 = mamefont_readBlobU8(bytecode + (programCounter + 0));
     uint8_t byte3 = mamefont_readBlobU8(bytecode + (programCounter + 1));
-
-    bool bitReverse = byte3 & CPX_BIT_REVERSAL_MASK;
-    bool byteReverse = byte3 & CPX_BYTE_REVERSAL_MASK;
-    bool inverse = byte3 & CPX_INVERSE_MASK;
-
+    uint8_t flags = byte3 & (CPX_BYTE_REVERSE::MASK | CPX_BIT_REVERSE::MASK |
+                             CPX_INVERSE::MASK);
     uint8_t length = (byte3 & CPX_LENGTH_MASK) + CPX_LENGTH_BIAS;
-    frag_index_t offset =
-        byte2 | (((frag_index_t)(byte3 & CPX_OFFSET_H_MASK)) << 8);
+    frag_index_t offset = byte2 | ((CPX_OFFSET_H::read(byte3)) << 8);
 
-    MAMEFONT_BEFORE_OP(Operator::CPX, 3,
-                       "(ofst=%d, len=%d, bitRev=%d, byteRev=%d, inv=%d)",
-                       (int)offset, (int)length, (int)bitReverse,
-                       (int)byteReverse, (int)inverse);
+    MAMEFONT_BEFORE_OP(
+        Operator::CPX, 3, "(ofst=%d, len=%d, byteRev=%d, bitRev=%d, inv=%d)",
+        (int)offset, (int)length, (int)CPX_BYTE_REVERSE::read(flags),
+        (int)CPX_BIT_REVERSE::read(flags), (int)CPX_INVERSE::read(flags));
 
-    Cursor readCursor = writeCursor;
-    if (byteReverse) {
-      readCursor.add(rule, -offset + length);
-      for (int8_t i = length; i != 0; i--) {
-        int idx;
-        fragment_t frag = readPreDecr(readCursor);
-        if (bitReverse) frag = reverseBits(frag);
-        if (inverse) frag = ~frag;
-        write(frag);
-      }
-    } else {
-      readCursor.add(rule, -offset);
-      for (int8_t i = length; i != 0; i--) {
-        fragment_t frag = readPostIncr(readCursor);
-        if (bitReverse) frag = reverseBits(frag);
-        if (inverse) frag = ~frag;
-        write(frag);
-      }
+    if (CPX_BYTE_REVERSE::read(flags)) {
+      offset -= length;
     }
+    copyCore(flags, -offset, length);
 
     MAMEFONT_AFTER_OP(length);
 
     programCounter += 2;
   }
 #endif
+
+  MAMEFONT_NOINLINE
+  void copyCore(uint8_t flags, frag_index_t offset, uint8_t length) {
+    bool byteReverse = CPX_BYTE_REVERSE::read(flags);
+
+    Cursor readCursor = writeCursor;
+    readCursor.add(rule, offset);
+    for (int8_t i = length; i != 0; i--) {
+      int idx;
+      fragment_t frag =
+          byteReverse ? readPreDecr(readCursor) : readPostIncr(readCursor);
+#ifndef MAMEFONT_NO_CPX
+      if (CPX_BIT_REVERSE::read(flags)) frag = reverseBits(frag);
+      if (CPX_INVERSE::read(flags)) frag = ~frag;
+#endif
+      write(frag);
+    }
+  }
 
   MAMEFONT_ALWAYS_INLINE void LDI(uint8_t inst) {
     fragment_t frag = mamefont_readBlobU8(bytecode + programCounter);
@@ -645,7 +653,8 @@ class StateMachine {
     programCounter += 1;
   }
 
-  MAMEFONT_ALWAYS_INLINE void RPT(uint8_t inst) {
+  MAMEFONT_ALWAYS_INLINE
+  void RPT(uint8_t inst) {
     uint8_t repeatCount = RPT_REPEAT_COUNT::read(inst);
     MAMEFONT_BEFORE_OP(Operator::RPT, 1, "(rpt=%d)", repeatCount);
     for (uint8_t i = repeatCount; i != 0; i--) {
@@ -654,7 +663,8 @@ class StateMachine {
     MAMEFONT_AFTER_OP(repeatCount);
   }
 
-  MAMEFONT_ALWAYS_INLINE void XOR(uint8_t inst) {
+  MAMEFONT_ALWAYS_INLINE
+  void XOR(uint8_t inst) {
     uint8_t mask = XOR_WIDTH_2BIT::read(inst) ? 0x03 : 0x01;
     mask <<= XOR_POS::read(inst);
     MAMEFONT_BEFORE_OP(Operator::XOR, 1, "(mask=0x%02X)", mask);
@@ -662,7 +672,8 @@ class StateMachine {
     MAMEFONT_AFTER_OP(1);
   }
 
-  MAMEFONT_NOINLINE void write(uint8_t value) {
+  MAMEFONT_NOINLINE
+  void write(uint8_t value) {
     buffData[writeCursor.postIncr(rule)] = value;
     lastFragment = value;
     if (writeCursor.fragIndex == 0) {
@@ -670,14 +681,16 @@ class StateMachine {
     }
   }
 
-  MAMEFONT_NOINLINE uint8_t readPostIncr(Cursor &cursor) const {
+  MAMEFONT_NOINLINE
+  uint8_t readPostIncr(Cursor &cursor) const {
     frag_index_t laneOfst = cursor.laneOffset;
     frag_index_t ofst = cursor.postIncr(rule);
     if (laneOfst < 0 || ofst < 0) return 0;
     return buffData[ofst];
   }
 
-  MAMEFONT_NOINLINE uint8_t readPreDecr(Cursor &cursor) const {
+  MAMEFONT_NOINLINE
+  uint8_t readPreDecr(Cursor &cursor) const {
     frag_index_t ofst = cursor.preDecr(rule);
     if (cursor.laneOffset < 0 || ofst < 0) return 0;
     return buffData[ofst];
