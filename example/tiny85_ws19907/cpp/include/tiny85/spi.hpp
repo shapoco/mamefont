@@ -18,43 +18,54 @@ class SPI {
     gpio::writeMulti((1 << PORT_MOSI) | (1 << PORT_SCK), 0);
   }
 
-  void writeBlocking(const uint8_t *data, uint8_t size) {
+  void sendDummyClocks(uint8_t count) {
+    USIDR = 0;
+    while (count--) {
+      USICR = (1 << USIWM0) | (1 << USITC);
+    }
+  }
+
+  SPI_ALWAYS_INLINE void writeSingleByte(uint8_t data) {
 #if 1
     constexpr uint8_t clkH = (1 << USIWM0) | (1 << USITC);
     constexpr uint8_t clkL = (1 << USIWM0) | (1 << USITC) | (1 << USICLK);
-    for (uint8_t i = size; i != 0; i--) {
-      USIDR = *(data++);
-      USICR = clkH;
-      USICR = clkL;
-      USICR = clkH;
-      USICR = clkL;
-      USICR = clkH;
-      USICR = clkL;
-      USICR = clkH;
-      USICR = clkL;
-      USICR = clkH;
-      USICR = clkL;
-      USICR = clkH;
-      USICR = clkL;
-      USICR = clkH;
-      USICR = clkL;
-      USICR = clkH;
-      USICR = clkL;
-    }
+    USIDR = data;
+    USICR = clkH;
+    USICR = clkL;
+    USICR = clkH;
+    USICR = clkL;
+    USICR = clkH;
+    USICR = clkL;
+    USICR = clkH;
+    USICR = clkL;
+    USICR = clkH;
+    USICR = clkL;
+    USICR = clkH;
+    USICR = clkL;
+    USICR = clkH;
+    USICR = clkL;
+    USICR = clkH;
+    USICR = clkL;
 #else
-    for (uint8_t i = size; i != 0; i--) {
-      uint8_t byte = *(data++);
-      for (int8_t j = 8; j != 0; j--) {
-        gpio::write(PORT_MOSI, byte & 0x80);
-        byte <<= 1;
-        gpio::write(PORT_SCK, 1);
-        gpio::write(PORT_SCK, 0);
-      }
+    uint8_t byte = data;
+    for (int8_t j = 8; j != 0; j--) {
+      gpio::write(PORT_MOSI, byte & 0x80);
+      byte <<= 1;
+      gpio::write(PORT_SCK, 1);
+      gpio::write(PORT_SCK, 0);
     }
 #endif
   }
 
-  SPI_ALWAYS_INLINE void writeBlocking(uint8_t data) {
-    writeBlocking(&data, 1);
+  void writeByte(uint8_t data, uint16_t repeat = 1) {
+    while (repeat--) {
+      writeSingleByte(data);
+    }
+  }
+
+  void writeArray(const uint8_t *data, uint8_t size) {
+    for (uint8_t i = size; i != 0; i--) {
+      writeSingleByte(*(data++));
+    }
   }
 };

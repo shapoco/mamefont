@@ -29,9 +29,10 @@ static constexpr uint16_t DISP_W = 480;
 static constexpr uint16_t DISP_H = 320;
 static constexpr int8_t PORT_DISP_CS = 3;
 static constexpr int8_t PORT_DISP_DC = 4;
-static constexpr int8_t PORT_DISP_RST = -1;
+static constexpr int8_t PORT_DISP_RST = 0;
 
 using coord_t = ili9488::coord_t;
+using Color = ili9488::Color;
 
 SPI spi;
 ili9488::Display<PORT_DISP_CS, PORT_DISP_DC, PORT_DISP_RST> display(spi);
@@ -77,12 +78,11 @@ static void drawNumber(const mf::Font& font, uint16_t number, coord_t x,
 
 int main() {
   spi.init();
-  delayMs(1000);
-  display.init();
+  delayMs(100);
 
   // Setup OLED
   display.init();
-  display.clear(0xFFFF);
+  display.clear(Color::WHITE);
 
   // Setup GlyphBuffer
   glyphBuff.data = buff;
@@ -98,7 +98,8 @@ int main() {
       *(wp++) = c;
     }
     *wp = '\0';
-    drawString(MameSansP_s48c40w08, buff, 8, 8 + i * 52, 0x0000, 0xc618);
+    drawString(MameSansP_s48c40w08, buff, 8, 8 + i * 52, Color::BLUE,
+               Color::GREEN);
   }
 
   while (1) {
