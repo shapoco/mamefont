@@ -1,6 +1,6 @@
 .PHONY: all build flash clean
 
-APP_NAME := tiny402_ssd1306
+APP_NAME := tiny85_ili9488_big_char
 
 REPO_DIR := ../../..
 SRC_DIR := src
