@@ -305,7 +305,7 @@ class Display {
     commandEnd();
   }
 
-  void drawMonoImage(const uint8_t *src, uint16_t stride, coord_t x, coord_t y,
+  void drawImage1bpp(const uint8_t *src, uint16_t stride, coord_t x, coord_t y,
                      coord_t w, coord_t h, color_t fgColor = 0xFFFF,
                      color_t bgColor = 0x0000) {
     coord_t dx = x;

@@ -37,7 +37,7 @@ using Color = ili9488::Color;
 SPI spi;
 ili9488::Display<PORT_DISP_CS, PORT_DISP_DC, PORT_DISP_RST> display(spi);
 
-uint8_t buff[MAX_GLYPH_COLS * MAX_GLYPH_HEIGHT];
+uint8_t glyphBmpArray[MAX_GLYPH_COLS * MAX_GLYPH_HEIGHT];
 mf::GlyphBuffer glyphBuff;
 
 const char MSG_LINE0[] PROGMEM = "8kByte ROM and 512";
@@ -57,7 +57,7 @@ static void drawString(const mf::Font& font, const char* str, coord_t x,
   for (const char* c = str; *c; c++) {
     mf::extractGlyph(font, *c, glyphBuff, &dims);
     x -= dims.xNegativeOffset;
-    display.drawMonoImage(glyphBuff.data, MAX_GLYPH_COLS, x, y, dims.width,
+    display.drawImage1bpp(glyphBuff.data, MAX_GLYPH_COLS, x, y, dims.width,
                           glyphHeight, fgColor, bgColor);
     display.fillRect(x + dims.width, y, dims.xSpacing, glyphHeight, bgColor);
     x += dims.width + dims.xSpacing;
@@ -85,7 +85,7 @@ int main() {
   display.clear(Color::WHITE);
 
   // Setup GlyphBuffer
-  glyphBuff.data = buff;
+  glyphBuff.data = glyphBmpArray;
   glyphBuff.stride = MAX_GLYPH_COLS;
 
   // Show Message

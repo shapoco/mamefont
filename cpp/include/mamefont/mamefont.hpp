@@ -544,7 +544,9 @@ class StateMachine {
   }
 #endif
 
+#ifndef MAMEFONT_NO_SFI
   MAMEFONT_NOINLINE
+#endif
   void shiftCore(uint8_t flags, uint8_t size, uint8_t rpt, uint8_t period) {
     bool right = SFT_RIGHT::read(flags);
     fragment_t modifier = getRightMask(right ? (8 - size) : size);
@@ -627,7 +629,9 @@ class StateMachine {
   }
 #endif
 
+#ifndef MAMEFONT_NO_CPX
   MAMEFONT_NOINLINE
+#endif
   void copyCore(uint8_t flags, frag_index_t offset, uint8_t length) {
     bool byteReverse = CPX_BYTE_REVERSE::read(flags);
 
