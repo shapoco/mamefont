@@ -53,7 +53,7 @@ class Encoder {
   void tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
                     bool preShift, int size, int period);
   void tryCPY(TryContext ctx);
-  void tryCopyCore(TryContext ctx, bool isCPX);
+  void tryCPX(TryContext ctx);
 
   void generateLut();
   void replaceLDItoLUP();

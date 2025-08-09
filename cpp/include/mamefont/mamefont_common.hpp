@@ -183,7 +183,7 @@ static constexpr uint8_t CPX_OFFSET_STEP = 1;
 static constexpr uint16_t CPX_OFFSET_MIN = 0;
 static constexpr uint16_t CPX_OFFSET_MAX =
     CPX_OFFSET_MIN + ((1 << CPX_OFFSET_WIDTH) - 1) * CPX_OFFSET_STEP;
-using CPX_OFFSET_H = BitField<uint8_t, 0, CPX_OFFSET_WIDTH - 1>;
+using CPX_OFFSET_H = BitField<uint8_t, 0, CPX_OFFSET_WIDTH - 8>;
 using CPX_INVERSE = BitFlag<1>;
 using CPX_LENGTH = BitField<uint8_t, 2, 4, 4, 4>;
 using CPX_BYTE_REVERSE = BitFlag<6>;

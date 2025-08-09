@@ -169,6 +169,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
     tryRPT(ctx);
     trySFT(ctx);
     tryCPY(ctx);
+    tryCPX(ctx);
 
     for (const auto &opr : oprs) {
 #if 0
@@ -336,41 +337,75 @@ void Encoder::tryCPY(TryContext ctx) {
   const int pastLen = mf::CPY_LENGTH::MAX + mf::CPY_OFFSET::MAX;
   pastBuff.resize(pastLen);
   ctx.state->copyPastTo(pastBuff, pastLen, pastLen);
-  FOR_FIELD_VALUES(mf::CPY_OFFSET, offset) {
-    FOR_FIELD_VALUES(mf::CPY_LENGTH, length) {
-      if (length > ctx.future.size) break;
-
+  FOR_FIELD_VALUES(mf::CPY_LENGTH, length) {
+    if (length > ctx.future.size) break;
+    FOR_FIELD_VALUES(mf::CPY_OFFSET, offset) {
       int iPastFrom = pastBuff.size() - offset - length;
       int iPastTo = iPastFrom + length;
       VecRef pastRef(pastBuff, iPastFrom, iPastTo);
+      VecRef futureRef = ctx.future.slice(0, length);
+      VecRef maskRef = ctx.compareMask.slice(0, length);
 
       for (bool byteReverse : {false, true}) {
         // These combinations are reserved for other instructions
         if (!byteReverse && length == 1 && offset == 0) continue;
         if (byteReverse && length == 1) continue;
 
-        VecRef futureRef = ctx.future.slice(0, length);
-        VecRef maskRef = ctx.compareMask.slice(0, length);
-
         uint8_t cpxFlags = mf::CPX_BYTE_REVERSE::place(byteReverse);
-
         if (maskedEqual(pastRef, futureRef, maskRef, cpxFlags)) {
           ctx.oprs.push_back(
               makeCPY(offset, length, byteReverse, pastRef.toVector(cpxFlags)));
-          break;
+          goto nextLength;
         }
       }
     }
+  nextLength:
   }
 }
 
-void Encoder::tryCopyCore(TryContext ctx, bool isCPX) {
-  int ofstMin = isCPX ? mf::CPX_OFFSET_MIN : mf::CPY_OFFSET::MIN;
-  int ofstMax = isCPX ? mf::CPX_OFFSET_MAX : mf::CPY_OFFSET::MAX;
-  int ofstStep = isCPX ? mf::CPX_OFFSET_STEP : mf::CPY_OFFSET::STEP;
-  int lenMin = isCPX ? mf::CPX_LENGTH::MIN : mf::CPY_LENGTH::MIN;
-  int lenMax = isCPX ? mf::CPX_LENGTH::MAX : mf::CPY_LENGTH::MAX;
-  int lenStep = isCPX ? mf::CPX_LENGTH::STEP : mf::CPY_LENGTH::STEP;
+void Encoder::tryCPX(TryContext ctx) {
+  if (options.noCpx) return;  // Skip CPX if disabled
+
+  std::vector<fragment_t> pastBuff;
+  const int pastLen = mf::CPX_OFFSET_MAX;
+  pastBuff.resize(pastLen);
+  ctx.state->copyPastTo(pastBuff, pastLen, pastLen);
+
+  FOR_FIELD_VALUES(mf::CPX_LENGTH, length) {
+    if (length > ctx.future.size) break;
+
+    VecRef futureRef = ctx.future.slice(0, length);
+    VecRef maskRef = ctx.compareMask.slice(0, length);
+
+    int ofstMin = mf::CPX_OFFSET_MIN;
+    int ofstMax = mf::CPX_OFFSET_MAX;
+    int ofstStep = mf::CPX_OFFSET_STEP;
+    for (int offset = ofstMin; offset <= ofstMax; offset += ofstStep) {
+      int iPastFrom = pastBuff.size() - offset;
+      int iPastTo = iPastFrom + length;
+      if (iPastTo > pastBuff.size()) continue;
+      if (iPastFrom < -length) break;
+      
+      VecRef pastRef(pastBuff, iPastFrom, iPastTo);
+
+      for (bool byteReverse : {false, true}) {
+        for (bool bitReverse : {false, true}) {
+          for (bool inverse : {false, true}) {
+            uint8_t cpxFlags = 0;
+            cpxFlags |= mf::CPX_BYTE_REVERSE::place(byteReverse);
+            cpxFlags |= mf::CPX_BIT_REVERSE::place(bitReverse);
+            cpxFlags |= mf::CPX_INVERSE::place(inverse);
+            if (maskedEqual(pastRef, futureRef, maskRef, cpxFlags)) {
+              ctx.oprs.push_back(makeCPX(offset, length, cpxFlags,
+                                         pastRef.toVector(cpxFlags)));
+              goto nextLength;
+            }
+          }
+        }
+      }
+    }
+  nextLength:
+  }
 }
 
 void Encoder::generateLut() {

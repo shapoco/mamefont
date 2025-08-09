@@ -105,4 +105,26 @@ static inline Operation makeCPY(int offset, int length, bool byteReverse,
                                           generated, cost);
 }
 
+static inline Operation makeCPX(int offset, int length, uint8_t cpxFlags,
+                                const std::vector<fragment_t> &generated) {
+  uint8_t byte1 = mf::baseCodeOf(mf::Operator::CPX);
+
+  uint8_t byte2 = offset & 0xFF;
+
+  uint8_t byte3 = 0;
+  byte3 |= mf::CPX_OFFSET_H::place(offset >> 8);
+  byte3 |= mf::CPX_LENGTH::place(length);
+  byte3 |= cpxFlags;  // Include byte reverse, bit reverse, and inverse
+
+  std::vector<uint8_t> byteCode({byte1, byte2, byte3});
+
+  int cost = baseCostOf(mf::Operator::CPX);
+  if (mf::CPX_BIT_REVERSE::read(cpxFlags)) cost++;
+  if (mf::CPX_INVERSE::read(cpxFlags)) cost++;
+  if (mf::CPX_BYTE_REVERSE::read(cpxFlags)) cost++;
+
+  return std::make_shared<OperationClass>(mf::Operator::CPX, byteCode,
+                                          generated, cost);
+}
+
 }  // namespace mamefont::mamec
