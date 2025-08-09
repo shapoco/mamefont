@@ -78,12 +78,20 @@ class Font {
 
   Font(const uint8_t *blob) : blob(blob) {}
 
-  MAMEFONT_ALWAYS_INLINE FontFlags flags() const {
-    return static_cast<FontFlags>(mamefont_readBlobU8(blob + OFST_FONT_FLAGS));
+  MAMEFONT_ALWAYS_INLINE uint8_t flags() const {
+    return mamefont_readBlobU8(blob + OFST_FONT_FLAGS);
+  }
+
+  MAMEFONT_ALWAYS_INLINE bool isVerticalFragment() const {
+    return FONT_FLAG_VERTICAL_FRAGMENT::read(flags());
+  }
+
+  MAMEFONT_ALWAYS_INLINE bool isMsb1st() const {
+    return FONT_FLAG_MSB1ST::read(flags());
   }
 
   MAMEFONT_ALWAYS_INLINE bool isShrinkedGlyphTable() const {
-    return 0 != (flags() & FontFlags::FONT_FLAG_SHRINKED_GLYPH_TABLE);
+    return FONT_FLAG_SHRINKED_GLYPH_TABLE::read(flags());
   }
 
   MAMEFONT_ALWAYS_INLINE uint8_t glyphTableEntrySize() const {
@@ -120,8 +128,7 @@ class Font {
 #elifdef MAMEFONT_VERTICAL_FRAGMENT_ONLY
     return true;
 #else
-    return mamefont_readBlobU8(blob + OFST_FONT_FLAGS) &
-           FontFlags::FONT_FLAG_VERTICAL_FRAGMENT;
+    return FONT_FLAG_VERTICAL_FRAGMENT::read(flags());
 #endif
   }
 
@@ -131,7 +138,7 @@ class Font {
     return Glyph(ptr, isShrinkedGlyphTable());
   }
 
-  Status getGlyph(uint8_t c, Glyph *glyph) const {
+  Status getGlyph(uint8_t c, Glyph * glyph) const {
     uint8_t first = firstCode();
     uint8_t last = lastCode();
     if (c < first || last < c) return Status::CHAR_CODE_OUT_OF_RANGE;
@@ -183,7 +190,33 @@ class Font {
 
 struct GlyphBuffer {
   uint8_t *data;
-  int16_t stride;
+  frag_index_t stride;
+
+  GlyphBuffer() : data(nullptr), stride(0) {}
+  GlyphBuffer(uint8_t *data, frag_index_t stride)
+      : data(data), stride(stride) {}
+
+  MAMEFONT_ALWAYS_INLINE bool getPixel(const Font &font, const Glyph &glyph, int8_t x,
+                                       int8_t y) const {
+    if (!data || !glyph.isValid()) return false;
+    if (x < 0 || glyph.width() <= x) return false;
+    if (y < 0 || font.glyphHeight() <= y) return false;
+
+    uint8_t ibit;
+    frag_index_t offset;
+    if (font.isVerticalFragment()) {
+      offset = y / 8 * stride + x;
+      ibit = y & 0x07;
+    } else {
+      offset = x / 8 + y * stride;
+      ibit = x & 0x07;
+    }
+    if (font.isMsb1st()) {
+      ibit = 7 - ibit;
+    }
+    uint8_t mask = 1 << ibit;
+    return (data[offset] & mask) != 0;
+  }
 };
 
 struct AddrRule {
@@ -269,7 +302,7 @@ struct Cursor {
 
 class StateMachine {
  private:
-  FontFlags flags;
+  uint8_t flags;
   const fragment_t *lut;
   const uint8_t *bytecode;
   uint8_t glyphHeight;
@@ -302,7 +335,7 @@ class StateMachine {
 #elifdef MAMEFONT_VERTICAL_FRAGMENT_ONLY
     bool verticalFrag = true;
 #else
-    bool verticalFrag = flags & FontFlags::FONT_FLAG_VERTICAL_FRAGMENT;
+    bool verticalFrag = FONT_FLAG_VERTICAL_FRAGMENT::read(flags);
 #endif
 
     if (verticalFrag) {
@@ -326,7 +359,7 @@ class StateMachine {
 #elifdef MAMEFONT_VERTICAL_FRAGMENT_ONLY
     bool verticalFrag = true;
 #else
-    bool verticalFrag = flags & FontFlags::FONT_FLAG_VERTICAL_FRAGMENT;
+    bool verticalFrag = FONT_FLAG_VERTICAL_FRAGMENT::read(flags);
 #endif
 
     int8_t glyphWidth = glyph.width();
