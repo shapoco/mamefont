@@ -168,6 +168,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
     tryLDI(ctx);
     tryRPT(ctx);
     trySFT(ctx);
+    trySFI(ctx);
     tryCPY(ctx);
     tryCPX(ctx);
 
@@ -275,6 +276,19 @@ void Encoder::trySFT(TryContext ctx) {
   }
 }
 
+void Encoder::trySFI(TryContext ctx) {
+  for (bool right : {false, true}) {
+    for (bool postSet : {false, true}) {
+      //for (bool preShift : {false, true}) {
+      int preShift = false;
+        FOR_FIELD_VALUES(mf::SFI_PERIOD, period) {
+          tryShiftCore(ctx, true, right, postSet, preShift, 1, period);
+        }
+      //}
+    }
+  }
+}
+
 void Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
                            bool preShift, int size, int period) {
   int rptMin = isSFI ? mf::SFI_REPEAT_COUNT::MIN : mf::SFT_REPEAT_COUNT::MIN;
@@ -323,8 +337,7 @@ void Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
     }
     if (rpt >= rptMin && changeDetected) {
       if (isSFI) {
-        throw std::runtime_error(
-            "SFI is not supported in this version of the encoder.");
+        ctx.oprs.push_back(makeSFI(right, postSet, preShift, period, rpt, generated));
       } else {
         ctx.oprs.push_back(makeSFT(right, postSet, size, rpt, generated));
       }
@@ -385,7 +398,7 @@ void Encoder::tryCPX(TryContext ctx) {
       int iPastTo = iPastFrom + length;
       if (iPastTo > pastBuff.size()) continue;
       if (iPastFrom < -length) break;
-      
+
       VecRef pastRef(pastBuff, iPastFrom, iPastTo);
 
       for (bool byteReverse : {false, true}) {

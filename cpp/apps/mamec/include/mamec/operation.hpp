@@ -90,6 +90,24 @@ static inline Operation makeSFT(bool right, bool postSet, int size, int rpt,
                                           generated, cost);
 }
 
+static inline Operation makeSFI(bool right, bool postSet, bool preShift,
+                                int period, int rpt,
+                                const std::vector<fragment_t> &generated) {
+  uint8_t byte1 = mf::baseCodeOf(mf::Operator::SFI);
+  uint8_t byte2 = 0;
+  byte2 |= mf::SFI_PERIOD::place(period);
+  byte2 |= mf::SFI_REPEAT_COUNT::place(rpt);
+  byte2 |= mf::SFI_RIGHT::place(right);
+  byte2 |= mf::SFI_POST_SET::place(postSet);
+  byte2 |= mf::SFI_PRE_SHIFT::place(preShift);
+  std::vector<uint8_t> byteCode({byte1, byte2});
+
+  int cost = baseCostOf(mf::Operator::SFI);
+
+  return std::make_shared<OperationClass>(mf::Operator::SFI, byteCode,
+                                          generated, cost);
+}
+
 static inline Operation makeCPY(int offset, int length, bool byteReverse,
                                 const std::vector<fragment_t> &generated) {
   uint8_t byte1 = mf::baseCodeOf(mf::Operator::CPY);

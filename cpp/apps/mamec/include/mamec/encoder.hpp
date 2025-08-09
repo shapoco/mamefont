@@ -50,6 +50,7 @@ class Encoder {
   void tryLDI(TryContext ctx);
   void tryRPT(TryContext ctx);
   void trySFT(TryContext ctx);
+  void trySFI(TryContext ctx);
   void tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
                     bool preShift, int size, int period);
   void tryCPY(TryContext ctx);
