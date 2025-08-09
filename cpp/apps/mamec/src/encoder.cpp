@@ -9,6 +9,7 @@
 #include "mamec/encoder.hpp"
 #include "mamec/gray_bitmap.hpp"
 #include "mamec/mame_glyph.hpp"
+#include "mamec/state_queue.hpp"
 
 #define FOR_FIELD_VALUES(field, value) \
   for (int value = field::MIN; value <= field::MAX; value += field::STEP)
@@ -97,6 +98,17 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
   std::vector<fragment_t> compareMask(numFrags, 0xFF);
   if (!options.forceZeroPadding) {
     compareMask = glyph->createCompareMaskArray();
+
+    if (options.verbose && options.verboseForCode == glyph->code) {
+      std::cout << "      Compare mask: " << std::endl;
+      size_t n = compareMask.size();
+      for (size_t i = 0; i < n; i++) {
+        if (i % 16 == 0) std::cout << "        ";
+        std::cout << byteToHexStr(compareMask[i]) << " ";
+        if ((i + 1) % 16 == 0 || i == n - 1) std::cout << std::endl;
+      }
+      std::cout << std::endl;
+    }
   }
 
   int duplicatedCode = -1;
@@ -131,30 +143,24 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
     glyph->fragmentsSameAsCode = duplicatedCode;
   }
 
-  std::map<size_t, BufferState> waitings;
+  StateQueue waitList;
   auto first = std::make_shared<BufferStateClass>(0, 0, nullptr);
-  first->bestCost = 0;
-  waitings[first->id] = first;
+  waitList.put(first, 0);
 
-  std::vector<BufferState> goalStates;
-  while (!waitings.empty()) {
-    BufferState curr = nullptr;
-    int bestCost = DUMMY_COST;
-    for (auto it = waitings.begin(); it != waitings.end(); ++it) {
-      if (it->second->bestCost < bestCost) {
-        curr = it->second;
-        bestCost = curr->bestCost;
-      }
-    }
-    waitings.erase(curr->id);
+  BufferState bestGoal = nullptr;
+  int bestGoalCost = DUMMY_COST;
+
+  while (!waitList.empty()) {
+    BufferState curr = waitList.popBest();
 
     if (curr->pos >= numFrags) {
-      goalStates.push_back(curr);
-      continue;
+      bestGoal = curr;
+      bestGoalCost = curr->bestCost;
+      break;
     }
 
-    auto future = VecRef(glyph->fragments, curr->pos, numFrags);
-    auto mask = VecRef(compareMask, curr->pos, numFrags);
+    VecRef future(glyph->fragments, curr->pos, numFrags);
+    VecRef mask(compareMask, curr->pos, numFrags);
 
     std::vector<Operation> oprs;
     TryContext ctx{oprs, curr, future, mask};
@@ -163,6 +169,17 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
     trySFT(ctx);
 
     for (const auto &opr : oprs) {
+#if 0
+      // todo delete checker code:
+      if (!maskedEqual(opr->generated, future.slice(0, opr->generated.size()),
+                       mask.slice(0, opr->generated.size()))) {
+        throw std::runtime_error(
+            std::string("Operation ") + mf::mnemonicOf(opr->op) +
+            " generated fragments do not match future fragments for " +
+            formatChar(glyph->code));
+      }
+#endif
+
       BufferState p = curr;
       for (fragment_t frag : opr->generated) {
         if (p->childState.contains(frag)) {
@@ -177,10 +194,9 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
 
       int nextCost = curr->bestCost + opr->cost;
       if (nextCost < p->bestCost) {
-        p->bestCost = nextCost;
         p->bestOpr = opr;
         p->bestPrev = curr;
-        waitings[p->id] = p;
+        waitList.put(p, nextCost);
       }
     }
 
@@ -194,19 +210,11 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
     }
   }
 
-  if (goalStates.empty()) {
+  if (!bestGoal) {
     throw std::runtime_error("No solutions found for " +
                              formatChar(glyph->code));
   }
 
-  BufferState bestGoal = nullptr;
-  int bestCost = 999999;
-  for (const auto &goal : goalStates) {
-    if (goal->bestCost < bestCost) {
-      bestGoal = goal;
-      bestCost = goal->bestCost;
-    }
-  }
   BufferState p = bestGoal;
   std::vector<Operation> oprs;
   while (p->id != first->id) {
@@ -243,24 +251,21 @@ void Encoder::tryLDI(TryContext ctx) {
 void Encoder::tryRPT(TryContext ctx) {
   int rptMax = std::min((size_t)mf::RPT_REPEAT_COUNT::MAX, ctx.future.size);
   int rptStep = mf::RPT_REPEAT_COUNT::STEP;
+  fragment_t lastFrag = ctx.state->lastFrag;
   for (int rpt = 1; rpt <= rptMax; rpt += rptStep) {
-    if (!maskedEqual(ctx.state->lastFrag, ctx.future[rpt - 1],
-                     ctx.compareMask[rpt - 1])) {
+    if (!maskedEqual(lastFrag, ctx.future[rpt - 1], ctx.compareMask[rpt - 1])) {
       break;
     }
     if (rpt >= mf::RPT_REPEAT_COUNT::MIN) {
-      ctx.oprs.push_back(makeRPT(ctx.future[0], rpt));
+      ctx.oprs.push_back(makeRPT(lastFrag, rpt));
     }
   }
 }
 
 void Encoder::trySFT(TryContext ctx) {
   for (bool right : {false, true}) {
-    // bool right = true;
     for (bool postSet : {false, true}) {
-      // bool postSet = false;
       FOR_FIELD_VALUES(mf::SFT_SIZE, size) {
-        // int size = 1;
         tryShiftCore(ctx, false, right, postSet, false, size, 1);
       }
     }
@@ -279,8 +284,8 @@ void Encoder::tryShiftCore(TryContext ctx, bool sfi, bool right, bool postSet,
 
   std::vector<fragment_t> generated;
 
-  fragment_t modifier = mf::getRightMask(right ? (8 - size) : size);
-  if (right) modifier = ~modifier;
+  fragment_t modifier = (1 << size) - 1;
+  if (right) modifier <<= (8 - size);
   if (!postSet) modifier = ~modifier;
 
   fragment_t work = ctx.state->lastFrag;

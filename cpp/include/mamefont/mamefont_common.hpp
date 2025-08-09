@@ -90,7 +90,7 @@ struct GlyphDimensions {
 
 template <typename T, int Param_POS, int Param_WIDTH, T Param_MIN = 0,
           T Param_STEP = 1>
-struct Field {
+struct BitField {
   static constexpr int POS = Param_POS;
   static constexpr int WIDTH = Param_WIDTH;
   static constexpr T STEP = Param_STEP;
@@ -101,27 +101,28 @@ struct Field {
       value >>= POS;
     }
     value &= ((1 << WIDTH) - 1);
-    if (STEP == 1) {
-      return MIN + value;
-    } else {
-      return MIN + STEP * value;
-    }
+    return MIN + STEP * value;
   }
-  static MAMEFONT_ALWAYS_INLINE uint8_t place(T value) {
+  static MAMEFONT_ALWAYS_INLINE uint8_t place(int value) {
 #ifdef MAMEFONT_EXCEPTIONS
-    if (value < MIN || value > MAX) {
-      throw std::out_of_range("Value out of range");
+    if (value < MIN || MAX < value) {
+      throw std::out_of_range("Value " + std::to_string(value) +
+                              " out of range " + std::to_string(MIN) + ".." +
+                              std::to_string(MAX));
     }
     if ((value - MIN) % STEP != 0) {
-      throw std::invalid_argument("Value is not a multiple of step");
+      throw std::invalid_argument("Value " + std::to_string(value) +
+                                  " is not a multiple of step " +
+                                  std::to_string(STEP));
     }
 #endif
     return ((value - MIN) / STEP) << POS;
   }
 };
 
-template <int POS>
-struct FlagBit {
+template <int Param_POS>
+struct BitFlag {
+  static constexpr int POS = Param_POS;
   static constexpr int MASK = (1 << POS);
   static MAMEFONT_ALWAYS_INLINE bool read(uint8_t value) {
     return 0 != (value & MASK);
@@ -131,53 +132,53 @@ struct FlagBit {
   }
 };
 
-using FONT_DIM_FONT_HEIGHT = Field<uint8_t, 0, 6, 1>;
-using FONT_DIM_Y_SPACING = Field<uint8_t, 0, 6>;
-using FONT_DIM_MAX_GLYPH_WIDTH = Field<uint8_t, 0, 6, 1>;
+using FONT_DIM_FONT_HEIGHT = BitField<uint8_t, 0, 6, 1>;
+using FONT_DIM_Y_SPACING = BitField<uint8_t, 0, 6>;
+using FONT_DIM_MAX_GLYPH_WIDTH = BitField<uint8_t, 0, 6, 1>;
 
-using FONT_FLAG_VERTICAL_FRAGMENT = FlagBit<7>;
-using FONT_FLAG_MSB1ST = FlagBit<6>;
-using FONT_FLAG_SHRINKED_GLYPH_TABLE = FlagBit<5>;
+using FONT_FLAG_VERTICAL_FRAGMENT = BitFlag<7>;
+using FONT_FLAG_MSB1ST = BitFlag<6>;
+using FONT_FLAG_SHRINKED_GLYPH_TABLE = BitFlag<5>;
 
-using GLYPH_DIM_WIDTH = Field<uint8_t, 0, 6, 1>;
-using GLYPH_DIM_X_SPACING = Field<int8_t, 0, 5, -16>;
-using GLYPH_DIM_X_NEGATIVE_OFFSET = Field<uint8_t, 5, 3>;
+using GLYPH_DIM_WIDTH = BitField<uint8_t, 0, 6, 1>;
+using GLYPH_DIM_X_SPACING = BitField<int8_t, 0, 5, -16>;
+using GLYPH_DIM_X_NEGATIVE_OFFSET = BitField<uint8_t, 5, 3>;
 
-using GLYPH_SHRINKED_DIM_WIDTH = Field<uint8_t, 0, 4, 1>;
-using GLYPH_SHRINKED_DIM_X_SPACING = Field<int8_t, 4, 2>;
-using GLYPH_SHRINKED_DIM_X_NEGATIVE_OFFSET = Field<uint8_t, 6, 2>;
+using GLYPH_SHRINKED_DIM_WIDTH = BitField<uint8_t, 0, 4, 1>;
+using GLYPH_SHRINKED_DIM_X_SPACING = BitField<int8_t, 4, 2>;
+using GLYPH_SHRINKED_DIM_X_NEGATIVE_OFFSET = BitField<uint8_t, 6, 2>;
 
-using LUP_INDEX = Field<uint8_t, 0, 6>;
+using LUP_INDEX = BitField<uint8_t, 0, 6>;
 
-using LUD_INDEX = Field<uint8_t, 0, 4>;
-using LUD_STEP = FlagBit<4>;
+using LUD_INDEX = BitField<uint8_t, 0, 4>;
+using LUD_STEP = BitFlag<4>;
 
-using SFT_REPEAT_COUNT = Field<uint8_t, 0, 2, 1>;
-using SFT_SIZE = Field<uint8_t, 2, 2, 1>;
-using SFT_POST_SET = FlagBit<4>;
-using SFT_RIGHT = FlagBit<5>;
+using SFT_REPEAT_COUNT = BitField<uint8_t, 0, 2, 1>;
+using SFT_SIZE = BitField<uint8_t, 2, 2, 1>;
+using SFT_POST_SET = BitFlag<4>;
+using SFT_RIGHT = BitFlag<5>;
 
-using SFI_REPEAT_COUNT = Field<uint8_t, 0, 3, 1>;
-using SFI_PRE_SHIFT = FlagBit<3>;
+using SFI_REPEAT_COUNT = BitField<uint8_t, 0, 3, 1>;
+using SFI_PRE_SHIFT = BitFlag<3>;
 using SFI_POST_SET = SFT_POST_SET;
 using SFI_RIGHT = SFT_RIGHT;
-using SFI_PERIOD = Field<uint8_t, 6, 2, 2>;
+using SFI_PERIOD = BitField<uint8_t, 6, 2, 2>;
 
-using RPT_REPEAT_COUNT = Field<uint8_t, 0, 4, 1>;
+using RPT_REPEAT_COUNT = BitField<uint8_t, 0, 4, 1>;
 
-using XOR_POS = Field<uint8_t, 0, 3>;
-using XOR_WIDTH_2BIT = FlagBit<3>;
+using XOR_POS = BitField<uint8_t, 0, 3>;
+using XOR_WIDTH_2BIT = BitFlag<3>;
 
-using CPY_LENGTH = Field<uint8_t, 0, 3, 1>;
-using CPY_OFFSET = Field<uint8_t, 3, 2>;
-using CPY_BYTE_REVERSE = FlagBit<5>;
+using CPY_LENGTH = BitField<uint8_t, 0, 3, 1>;
+using CPY_OFFSET = BitField<uint8_t, 3, 2>;
+using CPY_BYTE_REVERSE = BitFlag<5>;
 
-using CPX_OFFSET_H = Field<uint8_t, 0, 1>;
-using CPX_INVERSE = FlagBit<1>;
+using CPX_OFFSET_H = BitField<uint8_t, 0, 1>;
+using CPX_INVERSE = BitFlag<1>;
 static constexpr uint8_t CPX_LENGTH_MASK = ((1 << 4) - 1) << 2;
 static constexpr uint8_t CPX_LENGTH_BIAS = 4;
-using CPX_BYTE_REVERSE = FlagBit<6>;
-using CPX_BIT_REVERSE = FlagBit<7>;
+using CPX_BYTE_REVERSE = BitFlag<6>;
+using CPX_BIT_REVERSE = BitFlag<7>;
 
 using fragment_t = uint8_t;
 

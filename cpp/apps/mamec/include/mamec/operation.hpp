@@ -6,7 +6,7 @@
 
 namespace mamefont::mamec {
 
-static constexpr int DUMMY_COST = 999999;
+static constexpr int DUMMY_COST = 99999999;
 
 class OperationClass;
 using Operation = std::shared_ptr<OperationClass>;

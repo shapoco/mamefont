@@ -9,11 +9,11 @@
 namespace mamefont::mamec {
 
 struct VecRef {
-  std::vector<fragment_t> &fragments;
+  const std::vector<fragment_t> &fragments;
   const size_t start;
   const size_t size;
 
-  VecRef(std::vector<fragment_t> &frags, size_t start, size_t end)
+  VecRef(const std::vector<fragment_t> &frags, size_t start, size_t end)
       : fragments(frags), start(start), size(end - start) {
     if (start < 0 || start >= frags.size()) {
       throw std::out_of_range("Start index " + std::to_string(start) +
@@ -30,7 +30,7 @@ struct VecRef {
     }
   }
 
-  VecRef(std::vector<fragment_t> &frags)
+  VecRef(const std::vector<fragment_t> &frags)
       : fragments(frags), start(0), size(frags.size()) {}
 
   inline int normalizeIndex(int i) const {
@@ -43,8 +43,22 @@ struct VecRef {
     return i;
   }
 
-  inline fragment_t &operator[](int i) const {
+  const inline fragment_t &operator[](int i) const {
     return fragments[start + normalizeIndex(i)];
+  }
+
+  VecRef slice(int start, int end) const {
+    if (start < 0 || end < 0 || start > end) {
+      throw std::invalid_argument("Invalid slice range: " +
+                                  std::to_string(start) + " to " +
+                                  std::to_string(end));
+    }
+    if (start >= size || end > size) {
+      throw std::out_of_range("Slice range out of bounds: " +
+                              std::to_string(start) + " to " +
+                              std::to_string(end));
+    }
+    return VecRef(fragments, this->start + start, this->start + end);
   }
 };
 

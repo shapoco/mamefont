@@ -18,7 +18,7 @@ static inline size_t nextObjectId() { return objectId++; }
 std::string formatChar(int code);
 std::string byteToHexStr(uint8_t byte);
 static inline bool maskedEqual(fragment_t a, fragment_t b, fragment_t mask) {
-  return (a & mask) == (b & mask);
+  return ((a ^ b) & mask) == 0;
 }
 bool maskedEqual(const VecRef &a, const VecRef &b, const VecRef &mask);
 
