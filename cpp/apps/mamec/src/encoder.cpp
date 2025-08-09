@@ -166,6 +166,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
     std::vector<Operation> oprs;
     TryContext ctx{oprs, curr, future, mask};
     tryLDI(ctx);
+    tryXOR(ctx);
     tryRPT(ctx);
     trySFT(ctx);
     trySFI(ctx);
@@ -252,6 +253,23 @@ void Encoder::tryLDI(TryContext ctx) {
   ctx.oprs.push_back(makeLDI(ctx.future[0]));
 }
 
+void Encoder::tryXOR(TryContext ctx) {
+  FOR_FIELD_VALUES(mf::XOR_POS, pos) {
+    for (bool width2bit : {false, true}) {
+      // This combination is reserved for other instruction
+      if (width2bit && pos == 7) continue;
+
+      fragment_t mask = (width2bit ? 0x03 : 0x01) << pos;
+      fragment_t generated = ctx.state->lastFrag ^ mask;
+
+      if (maskedEqual(generated, ctx.future[0], ctx.compareMask[0])) {
+        ctx.oprs.push_back(makeXOR(pos, width2bit, generated));
+        return;
+      }
+    }
+  }
+}
+
 void Encoder::tryRPT(TryContext ctx) {
   int rptMax = std::min((size_t)mf::RPT_REPEAT_COUNT::MAX, ctx.future.size);
   int rptStep = mf::RPT_REPEAT_COUNT::STEP;
@@ -279,11 +297,11 @@ void Encoder::trySFT(TryContext ctx) {
 void Encoder::trySFI(TryContext ctx) {
   for (bool right : {false, true}) {
     for (bool postSet : {false, true}) {
-      //for (bool preShift : {false, true}) {
+      // for (bool preShift : {false, true}) {
       int preShift = false;
-        FOR_FIELD_VALUES(mf::SFI_PERIOD, period) {
-          tryShiftCore(ctx, true, right, postSet, preShift, 1, period);
-        }
+      FOR_FIELD_VALUES(mf::SFI_PERIOD, period) {
+        tryShiftCore(ctx, true, right, postSet, preShift, 1, period);
+      }
       //}
     }
   }
@@ -337,7 +355,8 @@ void Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
     }
     if (rpt >= rptMin && changeDetected) {
       if (isSFI) {
-        ctx.oprs.push_back(makeSFI(right, postSet, preShift, period, rpt, generated));
+        ctx.oprs.push_back(
+            makeSFI(right, postSet, preShift, period, rpt, generated));
       } else {
         ctx.oprs.push_back(makeSFT(right, postSet, size, rpt, generated));
       }

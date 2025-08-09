@@ -48,6 +48,7 @@ class Encoder {
  private:
   void generateInitialOperations(MameGlyph &glyph);
   void tryLDI(TryContext ctx);
+  void tryXOR(TryContext ctx);
   void tryRPT(TryContext ctx);
   void trySFT(TryContext ctx);
   void trySFI(TryContext ctx);

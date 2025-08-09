@@ -48,6 +48,20 @@ static inline Operation makeLDI(fragment_t frag) {
                                           generated, cost);
 }
 
+static inline Operation makeXOR(int pos, bool width2bit, fragment_t frag) {
+  uint8_t byte1 = mf::baseCodeOf(mf::Operator::XOR);
+  byte1 |= mf::XOR_POS::place(pos);
+  byte1 |= mf::XOR_WIDTH_2BIT::place(width2bit);
+  std::vector<uint8_t> byteCode({byte1});
+
+  std::vector<fragment_t> generated({frag});
+
+  int cost = baseCostOf(mf::Operator::XOR);
+
+  return std::make_shared<OperationClass>(mf::Operator::XOR, byteCode,
+                                          generated, cost);
+}
+
 static inline Operation makeLUP(int index, fragment_t frag) {
   uint8_t byte1 = mf::baseCodeOf(mf::Operator::LUP);
   byte1 |= mf::LUP_INDEX::place(index);
