@@ -23,17 +23,4 @@ std::string byteToHexStr(uint8_t byte) {
   return buf;
 }
 
-bool maskedEqual(const VecRef &a, const VecRef &b, const VecRef &mask) {
-  if (a.size != mask.size || b.size != mask.size) {
-    throw std::runtime_error(
-        "size mismatch in maskedEqual(): a.size()=" + std::to_string(a.size) +
-        ", b.size()=" + std::to_string(b.size) +
-        ", mask.size()=" + std::to_string(mask.size));
-  }
-  for (size_t i = 0; i < a.size; ++i) {
-    if (!maskedEqual(a[i], b[i], mask[i])) return false;
-  }
-  return true;
-}
-
 }  // namespace mamefont::mamec

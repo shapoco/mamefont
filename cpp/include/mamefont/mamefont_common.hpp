@@ -97,11 +97,16 @@ struct BitField {
   static constexpr T MIN = Param_MIN;
   static constexpr T MAX = MIN + ((1 << WIDTH) - 1) * STEP;
   static MAMEFONT_ALWAYS_INLINE T read(uint8_t value) {
-    if (POS != 0) {
-      value >>= POS;
+    if ((1 << POS) == STEP) {
+      value &= ((1 << WIDTH) - 1) << POS;
+      return MIN + value;
+    } else {
+      if (POS != 0) {
+        value >>= POS;
+      }
+      value &= ((1 << WIDTH) - 1);
+      return MIN + STEP * value;
     }
-    value &= ((1 << WIDTH) - 1);
-    return MIN + STEP * value;
   }
   static MAMEFONT_ALWAYS_INLINE uint8_t place(int value) {
 #ifdef MAMEFONT_EXCEPTIONS
@@ -173,10 +178,14 @@ using CPY_LENGTH = BitField<uint8_t, 0, 3, 1>;
 using CPY_OFFSET = BitField<uint8_t, 3, 2>;
 using CPY_BYTE_REVERSE = BitFlag<5>;
 
-using CPX_OFFSET_H = BitField<uint8_t, 0, 1>;
+static constexpr uint8_t CPX_OFFSET_WIDTH = 9;
+static constexpr uint8_t CPX_OFFSET_STEP = 1;
+static constexpr uint16_t CPX_OFFSET_MIN = 0;
+static constexpr uint16_t CPX_OFFSET_MAX =
+    CPX_OFFSET_MIN + ((1 << CPX_OFFSET_WIDTH) - 1) * CPX_OFFSET_STEP;
+using CPX_OFFSET_H = BitField<uint8_t, 0, CPX_OFFSET_WIDTH - 1>;
 using CPX_INVERSE = BitFlag<1>;
-static constexpr uint8_t CPX_LENGTH_MASK = ((1 << 4) - 1) << 2;
-static constexpr uint8_t CPX_LENGTH_BIAS = 4;
+using CPX_LENGTH = BitField<uint8_t, 2, 4, 4, 4>;
 using CPX_BYTE_REVERSE = BitFlag<6>;
 using CPX_BIT_REVERSE = BitFlag<7>;
 

@@ -656,7 +656,7 @@ class StateMachine {
     uint8_t byte3 = mamefont_readBlobU8(bytecode + (programCounter + 1));
     uint8_t flags = byte3 & (CPX_BYTE_REVERSE::MASK | CPX_BIT_REVERSE::MASK |
                              CPX_INVERSE::MASK);
-    uint8_t length = (byte3 & CPX_LENGTH_MASK) + CPX_LENGTH_BIAS;
+    uint8_t length = CPX_LENGTH::read(byte3);
     frag_index_t offset = byte2 | ((CPX_OFFSET_H::read(byte3)) << 8);
 
     MAMEFONT_BEFORE_OP(

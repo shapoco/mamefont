@@ -10,6 +10,7 @@
 #include "mamec/gray_bitmap.hpp"
 #include "mamec/mame_glyph.hpp"
 #include "mamec/state_queue.hpp"
+#include "mamec/vec_ref.hpp"
 
 #define FOR_FIELD_VALUES(field, value) \
   for (int value = field::MIN; value <= field::MAX; value += field::STEP)
@@ -167,6 +168,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
     tryLDI(ctx);
     tryRPT(ctx);
     trySFT(ctx);
+    tryCPY(ctx);
 
     for (const auto &opr : oprs) {
 #if 0
@@ -272,10 +274,10 @@ void Encoder::trySFT(TryContext ctx) {
   }
 }
 
-void Encoder::tryShiftCore(TryContext ctx, bool sfi, bool right, bool postSet,
+void Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
                            bool preShift, int size, int period) {
-  int rptMin = sfi ? mf::SFI_REPEAT_COUNT::MIN : mf::SFT_REPEAT_COUNT::MIN;
-  int rptMax = sfi ? mf::SFI_REPEAT_COUNT::MAX : mf::SFT_REPEAT_COUNT::MAX;
+  int rptMin = isSFI ? mf::SFI_REPEAT_COUNT::MIN : mf::SFT_REPEAT_COUNT::MIN;
+  int rptMax = isSFI ? mf::SFI_REPEAT_COUNT::MAX : mf::SFT_REPEAT_COUNT::MAX;
   if (preShift) {
     rptMax = std::min(rptMax, ((int)ctx.future.size - 1) / period);
   } else {
@@ -319,7 +321,7 @@ void Encoder::tryShiftCore(TryContext ctx, bool sfi, bool right, bool postSet,
       }
     }
     if (rpt >= rptMin && changeDetected) {
-      if (sfi) {
+      if (isSFI) {
         throw std::runtime_error(
             "SFI is not supported in this version of the encoder.");
       } else {
@@ -327,6 +329,48 @@ void Encoder::tryShiftCore(TryContext ctx, bool sfi, bool right, bool postSet,
       }
     }
   }
+}
+
+void Encoder::tryCPY(TryContext ctx) {
+  std::vector<fragment_t> pastBuff;
+  const int pastLen = mf::CPY_LENGTH::MAX + mf::CPY_OFFSET::MAX;
+  pastBuff.resize(pastLen);
+  ctx.state->copyPastTo(pastBuff, pastLen, pastLen);
+  FOR_FIELD_VALUES(mf::CPY_OFFSET, offset) {
+    FOR_FIELD_VALUES(mf::CPY_LENGTH, length) {
+      if (length > ctx.future.size) break;
+
+      int iPastFrom = pastBuff.size() - offset - length;
+      int iPastTo = iPastFrom + length;
+      VecRef pastRef(pastBuff, iPastFrom, iPastTo);
+
+      for (bool byteReverse : {false, true}) {
+        // These combinations are reserved for other instructions
+        if (!byteReverse && length == 1 && offset == 0) continue;
+        if (byteReverse && length == 1) continue;
+
+        VecRef futureRef = ctx.future.slice(0, length);
+        VecRef maskRef = ctx.compareMask.slice(0, length);
+
+        uint8_t cpxFlags = mf::CPX_BYTE_REVERSE::place(byteReverse);
+
+        if (maskedEqual(pastRef, futureRef, maskRef, cpxFlags)) {
+          ctx.oprs.push_back(
+              makeCPY(offset, length, byteReverse, pastRef.toVector(cpxFlags)));
+          break;
+        }
+      }
+    }
+  }
+}
+
+void Encoder::tryCopyCore(TryContext ctx, bool isCPX) {
+  int ofstMin = isCPX ? mf::CPX_OFFSET_MIN : mf::CPY_OFFSET::MIN;
+  int ofstMax = isCPX ? mf::CPX_OFFSET_MAX : mf::CPY_OFFSET::MAX;
+  int ofstStep = isCPX ? mf::CPX_OFFSET_STEP : mf::CPY_OFFSET::STEP;
+  int lenMin = isCPX ? mf::CPX_LENGTH::MIN : mf::CPY_LENGTH::MIN;
+  int lenMax = isCPX ? mf::CPX_LENGTH::MAX : mf::CPY_LENGTH::MAX;
+  int lenStep = isCPX ? mf::CPX_LENGTH::STEP : mf::CPY_LENGTH::STEP;
 }
 
 void Encoder::generateLut() {

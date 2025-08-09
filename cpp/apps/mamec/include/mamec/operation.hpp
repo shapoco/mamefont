@@ -90,4 +90,19 @@ static inline Operation makeSFT(bool right, bool postSet, int size, int rpt,
                                           generated, cost);
 }
 
+static inline Operation makeCPY(int offset, int length, bool byteReverse,
+                                const std::vector<fragment_t> &generated) {
+  uint8_t byte1 = mf::baseCodeOf(mf::Operator::CPY);
+  byte1 |= mf::CPY_OFFSET::place(offset);
+  byte1 |= mf::CPY_LENGTH::place(length);
+  byte1 |= mf::CPY_BYTE_REVERSE::place(byteReverse);
+  std::vector<uint8_t> byteCode({byte1});
+
+  int cost = baseCostOf(mf::Operator::CPY);
+  if (byteReverse) cost++;
+
+  return std::make_shared<OperationClass>(mf::Operator::CPY, byteCode,
+                                          generated, cost);
+}
+
 }  // namespace mamefont::mamec

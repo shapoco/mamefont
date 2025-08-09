@@ -26,6 +26,23 @@ class BufferStateClass {
 
   BufferStateClass(int pos, fragment_t lastFrag, BufferState parent)
       : id(nextObjectId()), pos(pos), lastFrag(lastFrag), parentState(parent) {}
+
+  inline void copyPastTo(std::vector<fragment_t> &dest, int negativeOffset,
+                         int length) const {
+    const BufferStateClass *p = this;
+    int numSkip = negativeOffset - length;
+    for (int i = 0; i < numSkip; i++) {
+      if (p) p = p->parentState.get();
+    }
+    for (int i = 0; i < length; i++) {
+      if (p) {
+        dest[length - 1 - i] = p->lastFrag;
+        p = p->parentState.get();
+      } else {
+        dest[length - 1 - i] = 0;
+      }
+    }
+  }
 };
 
 }  // namespace mamefont::mamec

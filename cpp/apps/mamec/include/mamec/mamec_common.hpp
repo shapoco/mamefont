@@ -4,8 +4,6 @@
 
 #include <mamefont/mamefont.hpp>
 
-#include "mamec/vec_ref.hpp"
-
 namespace mf = mamefont;
 using fragment_t = mf::fragment_t;
 
@@ -17,10 +15,17 @@ static inline size_t nextObjectId() { return objectId++; }
 
 std::string formatChar(int code);
 std::string byteToHexStr(uint8_t byte);
-static inline bool maskedEqual(fragment_t a, fragment_t b, fragment_t mask) {
+
+static inline bool maskedEqual(fragment_t a, fragment_t b, fragment_t mask,
+                               uint8_t cpxFlags = 0) {
+  if (mf::CPX_BIT_REVERSE::read(cpxFlags)) {
+    a = mf::reverseBits(a);
+  }
+  if (mf::CPX_INVERSE::read(cpxFlags)) {
+    a = ~a;
+  }
   return ((a ^ b) & mask) == 0;
 }
-bool maskedEqual(const VecRef &a, const VecRef &b, const VecRef &mask);
 
 static inline constexpr int baseCostOf(mf::Operator op) {
   switch (op) {

@@ -8,6 +8,7 @@
 #include "mamec/mame_glyph.hpp"
 #include "mamec/mamec_common.hpp"
 #include "mamec/operation.hpp"
+#include "mamec/vec_ref.hpp"
 
 namespace mamefont::mamec {
 
@@ -49,8 +50,11 @@ class Encoder {
   void tryLDI(TryContext ctx);
   void tryRPT(TryContext ctx);
   void trySFT(TryContext ctx);
-  void tryShiftCore(TryContext ctx, bool sfi, bool right, bool postSet,
+  void tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
                     bool preShift, int size, int period);
+  void tryCPY(TryContext ctx);
+  void tryCopyCore(TryContext ctx, bool isCPX);
+
   void generateLut();
   void replaceLDItoLUP();
   int findFragmentFromLUT(fragment_t frag);

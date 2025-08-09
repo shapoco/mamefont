@@ -49,17 +49,49 @@ struct VecRef {
 
   VecRef slice(int start, int end) const {
     if (start < 0 || end < 0 || start > end) {
-      throw std::invalid_argument("Invalid slice range: " +
-                                  std::to_string(start) + " to " +
-                                  std::to_string(end));
+      throw std::invalid_argument(
+          "Invalid slice range: " + std::to_string(start) + " to " +
+          std::to_string(end));
     }
     if (start >= size || end > size) {
-      throw std::out_of_range("Slice range out of bounds: " +
-                              std::to_string(start) + " to " +
-                              std::to_string(end));
+      throw std::out_of_range(
+          "Slice range out of bounds: " + std::to_string(start) + " to " +
+          std::to_string(end));
     }
     return VecRef(fragments, this->start + start, this->start + end);
   }
+
+  inline std::vector<fragment_t> toVector(uint8_t cpxFlag = 0) const {
+    std::vector<fragment_t> result;
+    result.reserve(size);
+    bool byteReverse = mf::CPX_BYTE_REVERSE::read(cpxFlag);
+    bool bitReverse = mf::CPX_BIT_REVERSE::read(cpxFlag);
+    bool inverse = mf::CPX_INVERSE::read(cpxFlag);
+    for (size_t i = 0; i < size; ++i) {
+      int iSrc = byteReverse ? (size - 1 - i) : i;
+      fragment_t frag = (*this)[iSrc];
+      if (bitReverse) frag = mf::reverseBits(frag);
+      if (inverse) frag = ~frag;
+      result.push_back(frag);
+    }
+    return std::move(result);
+  }
 };
+
+static inline bool maskedEqual(const VecRef &a, const VecRef &b,
+                               const VecRef &mask, uint8_t cpxFlags = 0) {
+  if (a.size != mask.size || b.size != mask.size) {
+    throw std::runtime_error(
+        "size mismatch in maskedEqual(): a.size=" + std::to_string(a.size) +
+        ", b.size=" + std::to_string(b.size) +
+        ", mask.size=" + std::to_string(mask.size));
+  }
+  bool byteReverse = CPX_BYTE_REVERSE::read(cpxFlags);
+  for (size_t i = 0; i < a.size; ++i) {
+    int ia = byteReverse ? (a.size - 1 - i) : i;
+    if (!maskedEqual(a[ia], b[i], mask[i], cpxFlags)) return false;
+  }
+  return true;
+}
 
 }  // namespace mamefont::mamec
