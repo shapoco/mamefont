@@ -5,6 +5,6 @@
 
 namespace mamefont::mamec {
 
-bool verifyGlyphs(const BitmapFont &bmpFont, const mf::Font &mameFont, bool verbose);
+bool verifyGlyphs(const BitmapFont &bmpFont, const mf::Font &mameFont, bool verbose = false, int verboseForCode = -1);
 
 }

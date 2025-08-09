@@ -3,7 +3,12 @@
 namespace mamefont {
 
 Status extractGlyph(const Font &font, uint8_t c, const GlyphBuffer &buff,
-                GlyphDimensions *dims) {
+                    GlyphDimensions *dims
+#ifdef MAMEFONT_DEBUG
+                    ,
+                    bool verbose
+#endif
+) {
   Glyph glyph;
   Status status = font.getGlyph(c, &glyph);
   if (status != Status::SUCCESS) return status;
@@ -13,11 +18,15 @@ Status extractGlyph(const Font &font, uint8_t c, const GlyphBuffer &buff,
   if (dims) glyph.getDimensions(dims);
 
   StateMachine stm(font);
-  return stm.run(glyph, buff);
+  return stm.run(glyph, buff
+#ifdef MAMEFONT_DEBUG
+  , verbose
+#endif
+  );
 }
 
 #ifdef MAMEFONT_DEBUG
-const char *getMnemonic(Operator op) {
+const char *mnemonicOf(Operator op) {
   // clang-format off
   switch (op) {
     case Operator::NONE: return "(None)";

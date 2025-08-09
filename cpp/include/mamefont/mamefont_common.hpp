@@ -194,7 +194,7 @@ using prog_cntr_t = uint16_t;
 #endif
 
 #ifdef MAMEFONT_DEBUG
-const char *getMnemonic(Operator op);
+const char *mnemonicOf(Operator op);
 #endif
 
 static MAMEFONT_ALWAYS_INLINE uint8_t getRightMask(uint8_t width) {

@@ -5,7 +5,7 @@
 namespace mamefont::mamec {
 
 bool verifyGlyphs(const BitmapFont &bmpFont, const mf::Font &mameFont,
-                  bool verbose) {
+                  bool verbose, int verboseForCode) {
   mf::Status ret;
 
   if (verbose) {
@@ -45,7 +45,8 @@ bool verifyGlyphs(const BitmapFont &bmpFont, const mf::Font &mameFont,
       continue;
     }
 
-    ret = mamefont::extractGlyph(mameFont, code, glyphBuff);
+    ret = mamefont::extractGlyph(mameFont, code, glyphBuff, nullptr,
+                                 verboseForCode == code);
     if (ret != mf::Status::SUCCESS) {
       std::cerr << "*ERROR: Extracting glyph for code " << code << ": "
                 << static_cast<int>(ret) << std::endl;
@@ -65,8 +66,9 @@ bool verifyGlyphs(const BitmapFont &bmpFont, const mf::Font &mameFont,
       }
     }
     if (numPixelDiff > 0) {
-      std::cerr << "*ERROR: Glyph verification failed for code " << code << ": "
-                << numPixelDiff << " pixel differences." << std::endl;
+      std::cerr << "*ERROR: Glyph verification failed for code "
+                << formatChar(code) << ": " << numPixelDiff
+                << " pixel differences." << std::endl;
       totalFailedGlyphs++;
     }
 

@@ -10,8 +10,12 @@
             ],
             "compilerPath": "/usr/bin/g++",
             "cStandard": "c17",
-            "cppStandard": "c++17",
-            "intelliSenseMode": "linux-gcc-x64"
+            "cppStandard": "c++20",
+            "intelliSenseMode": "linux-gcc-x64",
+            "defines": [
+                "MAMEFONT_EXCEPTIONS",
+                "MAMEFONT_DEBUG"
+            ]
         }
     ],
     "version": 4

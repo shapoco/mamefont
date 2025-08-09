@@ -31,7 +31,7 @@ bool maskedEqual(const VecRef &a, const VecRef &b, const VecRef &mask) {
         ", mask.size()=" + std::to_string(mask.size));
   }
   for (size_t i = 0; i < a.size; ++i) {
-    if ((a[i] ^ b[i]) & mask[i]) return false;
+    if (!maskedEqual(a[i], b[i], mask[i])) return false;
   }
   return true;
 }

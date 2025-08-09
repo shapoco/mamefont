@@ -5,8 +5,8 @@
 #include <vector>
 
 #include "mamec/bitmap_glyph.hpp"
+#include "mamec/buffer_state.hpp"
 #include "mamec/encoder.hpp"
-#include "mamec/generation_state.hpp"
 #include "mamec/gray_bitmap.hpp"
 #include "mamec/mame_glyph.hpp"
 
@@ -73,15 +73,31 @@ void Encoder::encode() {
   replaceLDItoLUP();
 }
 
+static void dumpTree(const BufferState &state, int *nodeCount, int pos) {
+  nodeCount[state->pos]++;
+  if (state->pos != pos) {
+    // todo: delete
+    throw std::runtime_error("BufferState position mismatch: expected " +
+                             std::to_string(pos) + ", got " +
+                             std::to_string(state->pos));
+  }
+  for (const auto &nextPair : state->childState) {
+    dumpTree(nextPair.second, nodeCount, pos + 1);
+  }
+}
+
 void Encoder::generateInitialOperations(MameGlyph &glyph) {
-  if (options.verbose && options.verboseForCode == glyph->code) {
+  if (options.verbose) {
     std::cout << "    Generating operations for " << formatChar(glyph->code)
               << std::endl;
   }
 
   int numFrags = glyph->fragments.size();
 
-  auto compareMask = glyph->createCompareMaskArray();
+  std::vector<fragment_t> compareMask(numFrags, 0xFF);
+  if (!options.forceZeroPadding) {
+    compareMask = glyph->createCompareMaskArray();
+  }
 
   int duplicatedCode = -1;
   size_t duplicatedSize = 0;
@@ -115,15 +131,15 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
     glyph->fragmentsSameAsCode = duplicatedCode;
   }
 
-  std::map<size_t, GenerationState> waitings;
-  auto first = std::make_shared<GenerationStateClass>(0, 0, nullptr);
+  std::map<size_t, BufferState> waitings;
+  auto first = std::make_shared<BufferStateClass>(0, 0, nullptr);
   first->bestCost = 0;
   waitings[first->id] = first;
 
-  std::vector<GenerationState> goalStates;
+  std::vector<BufferState> goalStates;
   while (!waitings.empty()) {
-    GenerationState curr = nullptr;
-    int bestCost = 999999;
+    BufferState curr = nullptr;
+    int bestCost = DUMMY_COST;
     for (auto it = waitings.begin(); it != waitings.end(); ++it) {
       if (it->second->bestCost < bestCost) {
         curr = it->second;
@@ -141,30 +157,40 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
     auto mask = VecRef(compareMask, curr->pos, numFrags);
 
     std::vector<Operation> oprs;
-    tryLDI(oprs, curr, future, mask);
-    tryRPT(oprs, curr, future, mask);
+    TryContext ctx{oprs, curr, future, mask};
+    tryLDI(ctx);
+    tryRPT(ctx);
+    trySFT(ctx);
 
     for (const auto &opr : oprs) {
-      GenerationState next = curr;
+      BufferState p = curr;
       for (fragment_t frag : opr->generated) {
-        if (next->nextState.find(frag) == next->nextState.end()) {
-          auto newState =
-              std::make_shared<GenerationStateClass>(next->pos + 1, frag, next);
-          next->nextState[frag] = newState;
-          next = newState;
-          waitings[next->id] = next;
+        if (p->childState.contains(frag)) {
+          p = p->childState[frag];
         } else {
-          next = next->nextState[frag];
+          auto newState =
+              std::make_shared<BufferStateClass>(p->pos + 1, frag, p);
+          p->childState[frag] = newState;
+          p = newState;
         }
       }
 
       int nextCost = curr->bestCost + opr->cost;
-      if (nextCost < next->bestCost) {
-        next->bestCost = nextCost;
-        next->bestOpr = opr;
-        next->bestPrev = curr;
-        waitings[next->id] = next;
+      if (nextCost < p->bestCost) {
+        p->bestCost = nextCost;
+        p->bestOpr = opr;
+        p->bestPrev = curr;
+        waitings[p->id] = p;
       }
+    }
+
+    if (options.verbose && options.verboseForCode == glyph->code) {
+      int numNodes[numFrags + 1] = {0};
+      dumpTree(first, numNodes, 0);
+      for (int i = 0; i <= numFrags; i++) {
+        printf("%3d ", numNodes[i]);
+      }
+      printf("\n");
     }
   }
 
@@ -173,7 +199,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
                              formatChar(glyph->code));
   }
 
-  GenerationState bestGoal = nullptr;
+  BufferState bestGoal = nullptr;
   int bestCost = 999999;
   for (const auto &goal : goalStates) {
     if (goal->bestCost < bestCost) {
@@ -181,7 +207,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
       bestCost = goal->bestCost;
     }
   }
-  GenerationState p = bestGoal;
+  BufferState p = bestGoal;
   std::vector<Operation> oprs;
   while (p->id != first->id) {
     oprs.insert(oprs.begin(), p->bestOpr);
@@ -210,21 +236,90 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
   glyph->operations = oprs;
 }
 
-void Encoder::tryLDI(std::vector<Operation> &oprs, GenerationState &state,
-                     const VecRef &future, const VecRef &mask) {
-  oprs.push_back(makeLDI(future[0]));
+void Encoder::tryLDI(TryContext ctx) {
+  ctx.oprs.push_back(makeLDI(ctx.future[0]));
 }
 
-void Encoder::tryRPT(std::vector<Operation> &oprs, GenerationState &state,
-                     const VecRef &future, const VecRef &mask) {
-  int rptMax = std::min((size_t)mf::RPT_REPEAT_COUNT::MAX, future.size);
+void Encoder::tryRPT(TryContext ctx) {
+  int rptMax = std::min((size_t)mf::RPT_REPEAT_COUNT::MAX, ctx.future.size);
   int rptStep = mf::RPT_REPEAT_COUNT::STEP;
   for (int rpt = 1; rpt <= rptMax; rpt += rptStep) {
-    if (future[rpt - 1] != state->lastFrag) {
+    if (!maskedEqual(ctx.state->lastFrag, ctx.future[rpt - 1],
+                     ctx.compareMask[rpt - 1])) {
       break;
     }
     if (rpt >= mf::RPT_REPEAT_COUNT::MIN) {
-      oprs.push_back(makeRPT(future[0], rpt));
+      ctx.oprs.push_back(makeRPT(ctx.future[0], rpt));
+    }
+  }
+}
+
+void Encoder::trySFT(TryContext ctx) {
+  for (bool right : {false, true}) {
+    // bool right = true;
+    for (bool postSet : {false, true}) {
+      // bool postSet = false;
+      FOR_FIELD_VALUES(mf::SFT_SIZE, size) {
+        // int size = 1;
+        tryShiftCore(ctx, false, right, postSet, false, size, 1);
+      }
+    }
+  }
+}
+
+void Encoder::tryShiftCore(TryContext ctx, bool sfi, bool right, bool postSet,
+                           bool preShift, int size, int period) {
+  int rptMin = sfi ? mf::SFI_REPEAT_COUNT::MIN : mf::SFT_REPEAT_COUNT::MIN;
+  int rptMax = sfi ? mf::SFI_REPEAT_COUNT::MAX : mf::SFT_REPEAT_COUNT::MAX;
+  if (preShift) {
+    rptMax = std::min(rptMax, ((int)ctx.future.size - 1) / period);
+  } else {
+    rptMax = std::min(rptMax, (int)ctx.future.size / period);
+  }
+
+  std::vector<fragment_t> generated;
+
+  fragment_t modifier = mf::getRightMask(right ? (8 - size) : size);
+  if (right) modifier = ~modifier;
+  if (!postSet) modifier = ~modifier;
+
+  fragment_t work = ctx.state->lastFrag;
+  bool changeDetected = false;
+
+  int offset = 0;
+  for (int rpt = (preShift ? 0 : 1); rpt <= rptMax; rpt++) {
+    int startPhase = preShift ? (period - 1) : 0;
+    for (int phase = startPhase; phase < period; phase++) {
+      fragment_t lastWork = work;
+      if (phase == period - 1) {
+        if (right) {
+          work >>= size;
+        } else {
+          work <<= size;
+        }
+        if (postSet) {
+          work |= modifier;
+        } else {
+          work &= modifier;
+        }
+      }
+      if (!maskedEqual(lastWork, work, ctx.compareMask[offset])) {
+        changeDetected = true;
+      }
+      if (maskedEqual(work, ctx.future[offset], ctx.compareMask[offset])) {
+        generated.push_back(work);
+        offset++;
+      } else {
+        return;
+      }
+    }
+    if (rpt >= rptMin && changeDetected) {
+      if (sfi) {
+        throw std::runtime_error(
+            "SFI is not supported in this version of the encoder.");
+      } else {
+        ctx.oprs.push_back(makeSFT(right, postSet, size, rpt, generated));
+      }
     }
   }
 }

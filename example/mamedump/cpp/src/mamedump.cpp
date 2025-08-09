@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
           auto opr = stm.dbgOpLog[iBuff];
           int nw = X_ZOOM;
           if (iBit == 0 && opr != mamefont::Operator::NONE) {
-            nw -= printf("%-3s", mamefont::getMnemonic(opr));
+            nw -= printf("%-3s", mamefont::mnemonicOf(opr));
           }
 
           for (int z = 0; z < nw; z++) {

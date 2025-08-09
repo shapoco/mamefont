@@ -2,7 +2,6 @@
 
 #include <stdint.h>
 
-#define MAMEFONT_EXCEPTIONS
 #include <mamefont/mamefont.hpp>
 
 #include "mamec/vec_ref.hpp"
@@ -12,14 +11,15 @@ using fragment_t = mf::fragment_t;
 
 namespace mamefont::mamec {
 
-extern  size_t objectId;
+extern size_t objectId;
 
-static inline size_t nextObjectId() {
-  return objectId++;
-}
+static inline size_t nextObjectId() { return objectId++; }
 
 std::string formatChar(int code);
 std::string byteToHexStr(uint8_t byte);
+static inline bool maskedEqual(fragment_t a, fragment_t b, fragment_t mask) {
+  return (a & mask) == (b & mask);
+}
 bool maskedEqual(const VecRef &a, const VecRef &b, const VecRef &mask);
 
 static inline constexpr int baseCostOf(mf::Operator op) {
@@ -46,8 +46,5 @@ static inline constexpr int baseCostOf(mf::Operator op) {
       return 9999;
   }
 }
-
-
-
 
 }  // namespace mamefont::mamec

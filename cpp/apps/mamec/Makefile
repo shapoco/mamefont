@@ -25,9 +25,15 @@ JSON_INC_DIR := $(REPO_DIR)/submodules/json/include
 
 BIN := $(BIN_DIR)/$(APP_NAME)
 
+EXTRA_DEPENDENCIES := \
+	Makefile
+
 CXX := g++
 CXXFLAGS := \
-	-std=c++17 \
+	-std=c++20 \
+	-O2 \
+	-DMAMEFONT_EXCEPTIONS \
+	-DMAMEFONT_DEBUG \
 	-I$(APP_INC_DIR) \
 	-I$(MAMEFONT_INC_DIR) \
 	-I$(STB_INC_DIR) \
@@ -38,15 +44,15 @@ all: build
 
 build: $(BIN)
 
-$(BIN): $(APP_OBJ_LIST) $(MAMEFONT_OBJ_LIST)
+$(BIN): $(APP_OBJ_LIST) $(MAMEFONT_OBJ_LIST) $(EXTRA_DEPENDENCIES)
 	@mkdir -p $(dir $@)
-	$(CXX) -o $@ $^ $(LDFLAGS)
+	$(CXX) -o $@ $(APP_OBJ_LIST) $(MAMEFONT_OBJ_LIST) $(LDFLAGS)
 
-$(BUILD_DIR)/%.o: $(APP_SRC_DIR)/%.cpp $(APP_HPP_LIST)
+$(BUILD_DIR)/%.o: $(APP_SRC_DIR)/%.cpp $(APP_HPP_LIST) $(EXTRA_DEPENDENCIES)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(MAMEFONT_BUILD_DIR)/%.o: $(MAMEFONT_SRC_DIR)/%.cpp $(MAMEFONT_HPP_LIST)
+$(MAMEFONT_BUILD_DIR)/%.o: $(MAMEFONT_SRC_DIR)/%.cpp $(MAMEFONT_HPP_LIST) $(EXTRA_DEPENDENCIES)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 

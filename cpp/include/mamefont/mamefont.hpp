@@ -138,7 +138,7 @@ class Font {
     return Glyph(ptr, isShrinkedGlyphTable());
   }
 
-  Status getGlyph(uint8_t c, Glyph * glyph) const {
+  Status getGlyph(uint8_t c, Glyph *glyph) const {
     uint8_t first = firstCode();
     uint8_t last = lastCode();
     if (c < first || last < c) return Status::CHAR_CODE_OUT_OF_RANGE;
@@ -196,8 +196,8 @@ struct GlyphBuffer {
   GlyphBuffer(uint8_t *data, frag_index_t stride)
       : data(data), stride(stride) {}
 
-  MAMEFONT_ALWAYS_INLINE bool getPixel(const Font &font, const Glyph &glyph, int8_t x,
-                                       int8_t y) const {
+  MAMEFONT_ALWAYS_INLINE bool getPixel(const Font &font, const Glyph &glyph,
+                                       int8_t x, int8_t y) const {
     if (!data || !glyph.isValid()) return false;
     if (x < 0 || glyph.width() <= x) return false;
     if (y < 0 || font.glyphHeight() <= y) return false;
@@ -322,6 +322,7 @@ class StateMachine {
   Cursor dbgDumpCursor;
   Operator *dbgOpLog = nullptr;
   uint8_t lastInstByte1 = 0;
+  bool verbose = false;
 #endif
 
   StateMachine(const Font &font) {
@@ -351,7 +352,12 @@ class StateMachine {
     }
   }
 
-  Status run(Glyph &glyph, const GlyphBuffer &buff) {
+  Status run(Glyph &glyph, const GlyphBuffer &buff
+#ifdef MAMEFONT_DEBUG
+             ,
+             bool verbose = false
+#endif
+  ) {
     buffData = buff.data;
 
 #ifdef MAMEFONT_HORIZONTAL_FRAGMENT_ONLY
@@ -382,16 +388,21 @@ class StateMachine {
     programCounter = glyph.entryPoint();
 
 #ifdef MAMEFONT_DEBUG
+    this->verbose = verbose;
+
     dbgDumpCursor = writeCursor;
     if (dbgOpLog) delete[] dbgOpLog;
     dbgOpLog = new Operator[buff.stride * glyphHeight];
     memset(dbgOpLog, 0, buff.stride * glyphHeight * sizeof(Operator));
-    printf("  entryPoint    : %d\n", programCounter);
-    printf("  glyphWidth    : %d\n", glyphWidth);
-    printf("  fragsPerLane  : %d\n", rule.fragsPerLane);
-    printf("  lanesPerGlyph : %d\n", rule.lanesPerGlyph);
-    printf("  fragStride    : %d\n", rule.fragStride);
-    printf("  laneStride    : %d\n", rule.laneStride);
+
+    if (verbose) {
+      printf("  entryPoint    : %d\n", programCounter);
+      printf("  glyphWidth    : %d\n", glyphWidth);
+      printf("  fragsPerLane  : %d\n", rule.fragsPerLane);
+      printf("  lanesPerGlyph : %d\n", rule.lanesPerGlyph);
+      printf("  fragStride    : %d\n", rule.fragStride);
+      printf("  laneStride    : %d\n", rule.laneStride);
+    }
 #endif
 
     while (numLanesToGlyphEnd > 0) {
@@ -460,6 +471,7 @@ class StateMachine {
   do {                                                                       \
     dbgDumpCursor = writeCursor;                                             \
     dbgOpLog[dbgDumpCursor.offset] = opr;                                    \
+    if (!verbose) break;                                                     \
     char logBuff[128];                                                       \
     char *logPtr = logBuff;                                                  \
     char *logEnd = logBuff + sizeof(logBuff);                                \
@@ -474,7 +486,7 @@ class StateMachine {
         logPtr += snprintf(logPtr, logEnd - logPtr, "   ");                  \
       }                                                                      \
     }                                                                        \
-    logPtr += snprintf(logPtr, logEnd - logPtr, "%-4s", getMnemonic(opr));   \
+    logPtr += snprintf(logPtr, logEnd - logPtr, "%-4s", mnemonicOf(opr));    \
     logPtr += snprintf(logPtr, logEnd - logPtr, (fmt), ##__VA_ARGS__);       \
     printf("%-64s", logBuff);                                                \
     if (logPtr - logBuff > 64) {                                             \
@@ -486,6 +498,7 @@ class StateMachine {
 
 #define MAMEFONT_AFTER_OP(len)                      \
   do {                                              \
+    if (!verbose) break;                            \
     for (int i = 0; i < (len); i++) {               \
       if (i % 16 == 0 && i > 0) {                   \
         for (int j = 0; j < 64 + 4; j++) {          \
@@ -735,6 +748,11 @@ class StateMachine {
 };
 
 Status extractGlyph(const Font &font, uint8_t c, const GlyphBuffer &buff,
-                    GlyphDimensions *dims = nullptr);
+                    GlyphDimensions *dims = nullptr
+#ifdef MAMEFONT_DEBUG
+                    ,
+                    bool verbose = false
+#endif
+);
 
 }  // namespace mamefont

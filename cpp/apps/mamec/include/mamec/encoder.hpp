@@ -4,7 +4,7 @@
 #include <memory>
 
 #include "mamec/bitmap_font.hpp"
-#include "mamec/generation_state.hpp"
+#include "mamec/buffer_state.hpp"
 #include "mamec/mame_glyph.hpp"
 #include "mamec/mamec_common.hpp"
 #include "mamec/operation.hpp"
@@ -18,6 +18,14 @@ struct EncodeOptions {
   bool msb1st = false;
   bool noCpx = false;
   bool noSfi = false;
+  bool forceZeroPadding = false;
+};
+
+struct TryContext {
+  std::vector<Operation> &oprs;
+  const BufferState &state;
+  const VecRef &future;
+  const VecRef &compareMask;
 };
 
 class Encoder {
@@ -38,10 +46,11 @@ class Encoder {
 
  private:
   void generateInitialOperations(MameGlyph &glyph);
-  void tryLDI(std::vector<Operation> &oprs, GenerationState &state,
-              const VecRef &future, const VecRef &mask);
-  void tryRPT(std::vector<Operation> &oprs, GenerationState &state,
-              const VecRef &future, const VecRef &mask);
+  void tryLDI(TryContext ctx);
+  void tryRPT(TryContext ctx);
+  void trySFT(TryContext ctx);
+  void tryShiftCore(TryContext ctx, bool sfi, bool right, bool postSet,
+                    bool preShift, int size, int period);
   void generateLut();
   void replaceLDItoLUP();
   int findFragmentFromLUT(fragment_t frag);

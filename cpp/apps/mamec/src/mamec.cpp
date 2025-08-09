@@ -18,7 +18,8 @@ static constexpr char OPT_OUTPUT = 'o';
 static constexpr char OPT_ENCODING = 'e';
 static constexpr char OPT_NO_CPX = 0x82;
 static constexpr char OPT_NO_SFI = 0x83;
-static constexpr char OPT_VERBOSE = 0x84;
+static constexpr char OPT_FORCE_ZERO_PADDING = 0x84;
+static constexpr char OPT_VERBOSE = 0x85;
 
 static struct option long_opts[] = {
     {"input", required_argument, 0, OPT_INPUT},
@@ -26,6 +27,7 @@ static struct option long_opts[] = {
     {"encoding", required_argument, 0, OPT_ENCODING},
     {"no_cpx", no_argument, 0, OPT_NO_CPX},
     {"no_sfi", no_argument, 0, OPT_NO_SFI},
+    {"force_zero_padding", no_argument, 0, OPT_FORCE_ZERO_PADDING},
     {"verbose", optional_argument, 0, OPT_VERBOSE},
     {0, 0, 0, 0},
 };
@@ -36,6 +38,7 @@ int main(int argc, char *argv[]) {
   std::string argEncoding("HL");
   bool argNoCPX = false;
   bool argNoSFI = false;
+  bool argForceZeroPadding = false;
   bool argVerbose = false;
   std::string argVerboseForCodeStr;
   int argVerboseForCode = -1;
@@ -61,6 +64,9 @@ int main(int argc, char *argv[]) {
         break;
       case OPT_NO_SFI:
         argNoSFI = true;
+        break;
+      case OPT_FORCE_ZERO_PADDING:
+        argForceZeroPadding = true;
         break;
       case OPT_VERBOSE:
         argVerbose = true;
@@ -92,8 +98,6 @@ int main(int argc, char *argv[]) {
   }
 
   EncodeOptions options;
-  options.verbose = argVerbose;
-  options.verboseForCode = argVerboseForCode;
   if (argEncoding == "HL") {
     options.verticalFrag = false;
     options.msb1st = false;
@@ -112,6 +116,9 @@ int main(int argc, char *argv[]) {
   }
   options.noCpx = argNoCPX;
   options.noSfi = argNoSFI;
+  options.forceZeroPadding = argForceZeroPadding;
+  options.verbose = argVerbose;
+  options.verboseForCode = argVerboseForCode;
 
   if (options.verbose) {
     std::cout << "MameFont Encoder" << std::endl;
@@ -147,6 +154,6 @@ int main(int argc, char *argv[]) {
   encoder.generateBlob();
 
   mf::Font mameFont(encoder.blob.data());
-  bool success = verifyGlyphs(bmpFont, mameFont, options.verbose);
+  bool success = verifyGlyphs(bmpFont, mameFont, options.verbose, options.verboseForCode);
   return success ? 0 : 1;
 }
