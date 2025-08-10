@@ -5,7 +5,7 @@
 #include <mamefont/mamefont.hpp>
 
 namespace mf = mamefont;
-using fragment_t = mf::fragment_t;
+using frag_t = mf::frag_t;
 
 namespace mamefont::mamec {
 
@@ -16,7 +16,7 @@ static inline size_t nextObjectId() { return objectId++; }
 std::string formatChar(int code);
 std::string byteToHexStr(uint8_t byte);
 
-static inline bool maskedEqual(fragment_t a, fragment_t b, fragment_t mask,
+static inline bool maskedEqual(frag_t a, frag_t b, frag_t mask,
                                uint8_t cpxFlags = 0) {
   if (mf::CPX_BIT_REVERSE::read(cpxFlags)) {
     a = mf::reverseBits(a);

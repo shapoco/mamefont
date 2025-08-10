@@ -9,11 +9,11 @@
 namespace mamefont::mamec {
 
 struct VecRef {
-  const std::vector<fragment_t> &fragments;
+  const std::vector<frag_t> &fragments;
   const size_t start;
   const size_t size;
 
-  VecRef(const std::vector<fragment_t> &frags, size_t start, size_t end)
+  VecRef(const std::vector<frag_t> &frags, size_t start, size_t end)
       : fragments(frags), start(start), size(end - start) {
     if (start < 0 || start >= frags.size()) {
       throw std::out_of_range("Start index " + std::to_string(start) +
@@ -30,7 +30,7 @@ struct VecRef {
     }
   }
 
-  VecRef(const std::vector<fragment_t> &frags)
+  VecRef(const std::vector<frag_t> &frags)
       : fragments(frags), start(0), size(frags.size()) {}
 
   inline int normalizeIndex(int i) const {
@@ -43,7 +43,7 @@ struct VecRef {
     return i;
   }
 
-  const inline fragment_t &operator[](int i) const {
+  const inline frag_t &operator[](int i) const {
     return fragments[start + normalizeIndex(i)];
   }
 
@@ -61,15 +61,15 @@ struct VecRef {
     return VecRef(fragments, this->start + start, this->start + end);
   }
 
-  inline std::vector<fragment_t> toVector(uint8_t cpxFlag = 0) const {
-    std::vector<fragment_t> result;
+  inline std::vector<frag_t> toVector(uint8_t cpxFlag = 0) const {
+    std::vector<frag_t> result;
     result.reserve(size);
     bool byteReverse = mf::CPX_BYTE_REVERSE::read(cpxFlag);
     bool bitReverse = mf::CPX_BIT_REVERSE::read(cpxFlag);
     bool inverse = mf::CPX_INVERSE::read(cpxFlag);
     for (size_t i = 0; i < size; ++i) {
       int iSrc = byteReverse ? (size - 1 - i) : i;
-      fragment_t frag = (*this)[iSrc];
+      frag_t frag = (*this)[iSrc];
       if (bitReverse) frag = mf::reverseBits(frag);
       if (inverse) frag = ~frag;
       result.push_back(frag);

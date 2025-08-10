@@ -29,7 +29,7 @@ class GrayBitmapClass {
 
   std::shared_ptr<GrayBitmapClass> crop(int x, int y, int w, int h) const;
 
-  std::vector<fragment_t> toFragments(bool verticalFrag = false,
+  std::vector<frag_t> toFragments(bool verticalFrag = false,
                                         bool msb1st = false) const;
 };
 

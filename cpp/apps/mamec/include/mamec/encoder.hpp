@@ -36,7 +36,7 @@ class Encoder {
   int fontHeight = 0;
   int ySpacing = 0;
   std::map<int, MameGlyph> glyphs;
-  std::vector<fragment_t> lut;
+  std::vector<frag_t> lut;
   std::vector<uint8_t> blob;
 
   Encoder(EncodeOptions opts) : options(opts){};
@@ -60,6 +60,6 @@ class Encoder {
 
   void generateLut();
   void replaceLDItoLUP();
-  int findFragmentFromLUT(fragment_t frag);
+  int findFragmentFromLUT(frag_t frag);
 };
 }  // namespace mamefont::mamec

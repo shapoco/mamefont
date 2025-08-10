@@ -96,7 +96,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
 
   int numFrags = glyph->fragments.size();
 
-  std::vector<fragment_t> compareMask(numFrags, 0xFF);
+  std::vector<frag_t> compareMask(numFrags, 0xFF);
   if (!options.forceZeroPadding) {
     compareMask = glyph->createCompareMaskArray();
 
@@ -176,8 +176,8 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
     for (const auto &opr : oprs) {
 #if 0
       // todo delete checker code:
-      if (!maskedEqual(opr->generated, future.slice(0, opr->generated.size()),
-                       mask.slice(0, opr->generated.size()))) {
+      if (!maskedEqual(opr->output, future.slice(0, opr->output.size()),
+                       mask.slice(0, opr->output.size()))) {
         throw std::runtime_error(
             std::string("Operation ") + mf::mnemonicOf(opr->op) +
             " generated fragments do not match future fragments for " +
@@ -186,7 +186,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
 #endif
 
       BufferState p = curr;
-      for (fragment_t frag : opr->generated) {
+      for (frag_t frag : opr->output) {
         if (p->childState.contains(frag)) {
           p = p->childState[frag];
         } else {
@@ -230,8 +230,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
   if (options.verbose && options.verboseForCode == glyph->code) {
     std::vector<uint8_t> byteCode;
     for (const auto &opr : oprs) {
-      byteCode.insert(byteCode.end(), opr->byteCode.begin(),
-                      opr->byteCode.end());
+      opr->writeCodeTo(byteCode);
     }
     std::cout << "    " << oprs.size() << " operations generated." << std::endl;
     glyph->report("      ");
@@ -259,11 +258,11 @@ void Encoder::tryXOR(TryContext ctx) {
       // This combination is reserved for other instruction
       if (width2bit && pos == 7) continue;
 
-      fragment_t mask = (width2bit ? 0x03 : 0x01) << pos;
-      fragment_t generated = ctx.state->lastFrag ^ mask;
+      frag_t mask = (width2bit ? 0x03 : 0x01) << pos;
+      frag_t output = ctx.state->lastFrag ^ mask;
 
-      if (maskedEqual(generated, ctx.future[0], ctx.compareMask[0])) {
-        ctx.oprs.push_back(makeXOR(pos, width2bit, generated));
+      if (maskedEqual(output, ctx.future[0], ctx.compareMask[0])) {
+        ctx.oprs.push_back(makeXOR(pos, width2bit, output));
         return;
       }
     }
@@ -273,7 +272,7 @@ void Encoder::tryXOR(TryContext ctx) {
 void Encoder::tryRPT(TryContext ctx) {
   int rptMax = std::min((size_t)mf::RPT_REPEAT_COUNT::MAX, ctx.future.size);
   int rptStep = mf::RPT_REPEAT_COUNT::STEP;
-  fragment_t lastFrag = ctx.state->lastFrag;
+  frag_t lastFrag = ctx.state->lastFrag;
   for (int rpt = 1; rpt <= rptMax; rpt += rptStep) {
     if (!maskedEqual(lastFrag, ctx.future[rpt - 1], ctx.compareMask[rpt - 1])) {
       break;
@@ -285,7 +284,7 @@ void Encoder::tryRPT(TryContext ctx) {
 }
 
 void Encoder::trySFT(TryContext ctx) {
-  fragment_t last = ctx.state->lastFrag;
+  frag_t last = ctx.state->lastFrag;
   if (last == ctx.future[0]) {
     // If no shift is needed, return early
     return;
@@ -306,7 +305,7 @@ void Encoder::trySFT(TryContext ctx) {
 }
 
 void Encoder::trySFI(TryContext ctx) {
-  fragment_t last = ctx.state->lastFrag;
+  frag_t last = ctx.state->lastFrag;
   for (bool postSet : {false, true}) {
     if ((last == 0x00 && !postSet) || (last == 0xFF && postSet)) {
       // If the last fragment is all zeros or all ones, no shift can change it
@@ -334,20 +333,20 @@ bool Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
     rptMax = std::min(rptMax, (int)ctx.future.size / period);
   }
 
-  std::vector<fragment_t> generated;
+  std::vector<frag_t> output;
 
-  fragment_t modifier = (1 << size) - 1;
+  frag_t modifier = (1 << size) - 1;
   if (right) modifier <<= (8 - size);
   if (!postSet) modifier = ~modifier;
 
-  fragment_t work = ctx.state->lastFrag;
+  frag_t work = ctx.state->lastFrag;
   bool changeDetected = false;
 
   int offset = 0;
   for (int rpt = (preShift ? 0 : 1); rpt <= rptMax; rpt++) {
     int startPhase = (rpt == 0 && preShift) ? (period - 1) : 0;
     for (int phase = startPhase; phase < period; phase++) {
-      fragment_t lastWork = work;
+      frag_t lastWork = work;
       if (phase == period - 1) {
         if (right) {
           work >>= size;
@@ -364,7 +363,7 @@ bool Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
         changeDetected = true;
       }
       if (maskedEqual(work, ctx.future[offset], ctx.compareMask[offset])) {
-        generated.push_back(work);
+        output.push_back(work);
         offset++;
       } else {
         return false;
@@ -373,9 +372,9 @@ bool Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
     if (rpt >= rptMin && changeDetected) {
       if (isSFI) {
         ctx.oprs.push_back(
-            makeSFI(right, postSet, preShift, period, rpt, generated));
+            makeSFI(right, postSet, preShift, period, rpt, output));
       } else {
-        ctx.oprs.push_back(makeSFT(right, postSet, size, rpt, generated));
+        ctx.oprs.push_back(makeSFT(right, postSet, size, rpt, output));
       }
     }
   }
@@ -383,7 +382,7 @@ bool Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
 }
 
 void Encoder::tryCPY(TryContext ctx) {
-  std::vector<fragment_t> pastBuff;
+  std::vector<frag_t> pastBuff;
   const int pastLen = mf::CPY_LENGTH::MAX + mf::CPY_OFFSET::MAX;
   pastBuff.resize(pastLen);
   ctx.state->copyPastTo(pastBuff, pastLen, pastLen);
@@ -417,7 +416,7 @@ void Encoder::tryCPY(TryContext ctx) {
 void Encoder::tryCPX(TryContext ctx) {
   if (options.noCpx) return;  // Skip CPX if disabled
 
-  std::vector<fragment_t> pastBuff;
+  std::vector<frag_t> pastBuff;
   const int pastLen = mf::CPX_OFFSET_MAX;
   pastBuff.resize(pastLen);
   ctx.state->copyPastTo(pastBuff, pastLen, pastLen);
@@ -466,12 +465,12 @@ void Encoder::generateLut() {
   }
 
   // count how many times each fragment is used in LDI operations
-  std::map<fragment_t, int> lutMap;
+  std::map<frag_t, int> lutMap;
   for (const auto &glyphPair : glyphs) {
     const MameGlyph &glyph = glyphPair.second;
     for (const auto &opr : glyph->operations) {
       if (opr->op == mf::Operator::LDI) {
-        fragment_t frag = opr->generated[0];
+        frag_t frag = opr->output[0];
         if (lutMap.find(frag) == lutMap.end()) {
           lutMap[frag] = 1;
         } else {
@@ -482,7 +481,7 @@ void Encoder::generateLut() {
   }
 
   // Sort the LUT by usage count in descending order
-  std::vector<std::pair<int, fragment_t>> sortedLut;
+  std::vector<std::pair<int, frag_t>> sortedLut;
   for (const auto &kv : lutMap) {
     sortedLut.push_back({kv.second, kv.first});
   }
@@ -509,7 +508,7 @@ void Encoder::replaceLDItoLUP() {
     for (int i = 0; i < n; i++) {
       auto &opr = glyph->operations[i];
       if (opr->op == mf::Operator::LDI) {
-        fragment_t frag = opr->generated[0];
+        frag_t frag = opr->output[0];
         int index = findFragmentFromLUT(frag);
         if (index >= 0) {
           glyph->operations[i] = makeLUP(index, frag);
@@ -519,7 +518,7 @@ void Encoder::replaceLDItoLUP() {
   }
 }
 
-int Encoder::findFragmentFromLUT(fragment_t frag) {
+int Encoder::findFragmentFromLUT(frag_t frag) {
   int n = lut.size();
   for (int j = 0; j < n; j++) {
     if (lut[j] == frag) {
@@ -547,8 +546,7 @@ void Encoder::generateBlob() {
     }
     glyph->entryPoint = bytecodes.size();
     for (const auto &opr : glyph->operations) {
-      bytecodes.insert(bytecodes.end(), opr->byteCode.begin(),
-                       opr->byteCode.end());
+      opr->writeCodeTo(bytecodes);
     }
     if (shrinkedGlyphTable) {
       while (bytecodes.size() % 2 != 0) {

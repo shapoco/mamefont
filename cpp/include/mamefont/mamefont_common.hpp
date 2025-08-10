@@ -57,6 +57,18 @@ enum class Operator : int8_t {
   ABO,
 };
 
+struct Instruction {
+  uint8_t length = 0;
+  uint8_t code[3] = {0x00, 0x00, 0x00};
+
+  Instruction() = default;
+  Instruction(uint8_t b1) : length(1), code{b1, 0x00, 0x00} {}
+  Instruction(uint8_t b1, uint8_t b2)
+      : length(2), code{b1, b2, 0x00} {}
+  Instruction(uint8_t b1, uint8_t b2, uint8_t b3)
+      : length(3), code{b1, b2, b3} {}
+};
+
 static MAMEFONT_ALWAYS_INLINE constexpr uint8_t baseCodeOf(Operator op) {
   switch (op) {
     case Operator::RPT:
@@ -189,7 +201,7 @@ using CPX_LENGTH = BitField<uint8_t, 2, 4, 4, 4>;
 using CPX_BYTE_REVERSE = BitFlag<6>;
 using CPX_BIT_REVERSE = BitFlag<7>;
 
-using fragment_t = uint8_t;
+using frag_t = uint8_t;
 
 #ifdef MAMEFONT_FRAGMENT_INDEX_8BIT
 using frag_index_t = int8_t;

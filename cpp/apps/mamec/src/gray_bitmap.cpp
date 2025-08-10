@@ -86,16 +86,16 @@ std::shared_ptr<GrayBitmapClass> GrayBitmapClass::crop(int x, int y, int w,
   return std::make_shared<GrayBitmapClass>(cropped, w, h);
 }
 
-std::vector<fragment_t> GrayBitmapClass::toFragments(bool verticalFrag,
+std::vector<frag_t> GrayBitmapClass::toFragments(bool verticalFrag,
                                                      bool msb1st) const {
-  std::vector<fragment_t> frags;
+  std::vector<frag_t> frags;
   if (verticalFrag) {
     frags.resize(width * ((height + 7) / 8));
 
     for (int y_coarse = 0; y_coarse < height; y_coarse += 8) {
-      fragment_t *destPtr = &frags[y_coarse / 8 * width];
+      frag_t *destPtr = &frags[y_coarse / 8 * width];
       for (int x = 0; x < width; ++x) {
-        fragment_t frag = 0;
+        frag_t frag = 0;
         for (int y_fine = 0; y_fine < 8; ++y_fine) {
           int y = y_coarse + y_fine;
           int i_bit = msb1st ? (7 - y_fine) : y_fine;
@@ -109,9 +109,9 @@ std::vector<fragment_t> GrayBitmapClass::toFragments(bool verticalFrag,
   } else {
     frags.resize(height * ((width + 7) / 8));
     for (int x_coarse = 0; x_coarse < width; x_coarse += 8) {
-      fragment_t *destPtr = &frags[x_coarse / 8 * height];
+      frag_t *destPtr = &frags[x_coarse / 8 * height];
       for (int y = 0; y < height; ++y) {
-        fragment_t frag = 0;
+        frag_t frag = 0;
         for (int x_fine = 0; x_fine < 8; ++x_fine) {
           int x = x_coarse + x_fine;
           int i_bit = msb1st ? (7 - x_fine) : x_fine;

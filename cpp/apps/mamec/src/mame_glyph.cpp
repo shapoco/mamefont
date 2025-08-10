@@ -4,11 +4,11 @@
 #include "mamec/mamec_common.hpp"
 
 namespace mamefont::mamec {
-std::vector<fragment_t> MameGlyphClass::createCompareMaskArray() const {
-  std::vector<fragment_t> compareMask;
+std::vector<frag_t> MameGlyphClass::createCompareMaskArray() const {
+  std::vector<frag_t> compareMask;
   int n = fragments.size();
   compareMask.resize(n, 0xFF);
-  fragment_t mask = lastLaneCompareMask();
+  frag_t mask = lastLaneCompareMask();
   for (int i = n - tall(); i < n; i++) {
     compareMask[i] = mask;
   }
@@ -31,7 +31,7 @@ void MameGlyphClass::report(std::string indent) const {
   }
   std::vector<uint8_t> byteCode;
   for (const auto &opr : operations) {
-    byteCode.insert(byteCode.end(), opr->byteCode.begin(), opr->byteCode.end());
+    opr->writeCodeTo(byteCode);
   }
   std::cout << indent << "Bytecode:" << std::endl;
   for (int i = 0; i < byteCode.size(); ++i) {

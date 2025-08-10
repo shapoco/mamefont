@@ -181,7 +181,7 @@ class Font {
   }
 
 #ifdef MAMEFONT_DEBUG
-  fragment_t getLutEntry(int index) const {
+  frag_t getLutEntry(int index) const {
     if (index < 0 || lutSize() <= index) return 0x00;
     return mamefont_readBlobU8(blob + lutOffset() + index);
   }
@@ -303,7 +303,7 @@ struct Cursor {
 class StateMachine {
  private:
   uint8_t flags;
-  const fragment_t *lut;
+  const frag_t *lut;
   const uint8_t *bytecode;
   uint8_t glyphHeight;
 
@@ -312,7 +312,7 @@ class StateMachine {
   int8_t numLanesToGlyphEnd = 0;
 
   prog_cntr_t programCounter = 0;
-  fragment_t lastFragment = 0;
+  frag_t lastFragment = 0;
 
   AddrRule rule;
   Cursor writeCursor;
@@ -543,7 +543,7 @@ class StateMachine {
     MAMEFONT_BEFORE_OP(Operator::LUD, 1, "(idx=%d, step=%d)", (int)index,
                        (step ? 1 : 0));
 
-    const fragment_t *ptr = lut + index;
+    const frag_t *ptr = lut + index;
     write(mamefont_readBlobU8(ptr));
     if (step) ptr++;
     write(mamefont_readBlobU8(ptr));
@@ -595,7 +595,7 @@ class StateMachine {
 #endif
   void shiftCore(uint8_t flags, uint8_t size, uint8_t rpt, uint8_t period) {
     bool right = SFT_RIGHT::read(flags);
-    fragment_t modifier = getRightMask(right ? (8 - size) : size);
+    frag_t modifier = getRightMask(right ? (8 - size) : size);
     if (right) modifier = ~modifier;
 
     bool postSet = SFT_POST_SET::read(flags);
@@ -685,7 +685,7 @@ class StateMachine {
     readCursor.add(rule, offset);
     for (int8_t i = length; i != 0; i--) {
       int idx;
-      fragment_t frag =
+      frag_t frag =
           byteReverse ? readPreDecr(readCursor) : readPostIncr(readCursor);
 #ifndef MAMEFONT_NO_CPX
       if (CPX_BIT_REVERSE::read(flags)) frag = reverseBits(frag);
@@ -696,7 +696,7 @@ class StateMachine {
   }
 
   MAMEFONT_ALWAYS_INLINE void LDI(uint8_t inst) {
-    fragment_t frag = mamefont_readBlobU8(bytecode + programCounter);
+    frag_t frag = mamefont_readBlobU8(bytecode + programCounter);
     MAMEFONT_BEFORE_OP(Operator::LDI, 2, "(frag=0x%02X)", frag);
     write(frag);
     MAMEFONT_AFTER_OP(1);

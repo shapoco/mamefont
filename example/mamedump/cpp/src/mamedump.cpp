@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
   int lutSize = font.lutSize();
   printf("LUT (size=%1d):\n", lutSize);
   for (int i = 0; i < lutSize; i++) {
-    mamefont::fragment_t frag = font.getLutEntry(i);
+    mamefont::frag_t frag = font.getLutEntry(i);
     printf("  %2d: 0x%02X ", i, (int)frag);
     uint8_t tmp = frag;
     for (int ibit = 0; ibit < 8; ibit++) {

@@ -13,7 +13,7 @@ using MameGlyph = std::shared_ptr<MameGlyphClass>;
 class MameGlyphClass {
  public:
   int code;
-  std::vector<fragment_t> fragments;
+  std::vector<frag_t> fragments;
   bool verticalFragment = false;
   bool msb1st = false;
   int width = 0;
@@ -26,7 +26,7 @@ class MameGlyphClass {
   uint16_t entryPoint = mf::ENTRYPOINT_DUMMY;
   int byteCodeSize = 0;
 
-  MameGlyphClass(int code, std::vector<fragment_t> frags, int width, int height,
+  MameGlyphClass(int code, std::vector<frag_t> frags, int width, int height,
                  bool vertFrag, bool msb1st, int xSpacing, int xNegOffset)
       : code(code),
         fragments(frags),
@@ -47,16 +47,16 @@ class MameGlyphClass {
     return thickness() - (numLanes() - 1) * 8;
   }
 
-  inline fragment_t lastLaneCompareMask() const {
+  inline frag_t lastLaneCompareMask() const {
     int w = lastLaneThickness();
-    fragment_t mask = (1 << w) - 1;
+    frag_t mask = (1 << w) - 1;
     if (msb1st) {
       mask <<= (8 - w);
     }
     return mask;
   }
 
-  std::vector<fragment_t> createCompareMaskArray() const;
+  std::vector<frag_t> createCompareMaskArray() const;
   void report(std::string indent) const;
 };
 }  // namespace mamefont::mamec
