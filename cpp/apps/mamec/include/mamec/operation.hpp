@@ -56,6 +56,7 @@ static inline Operation makeOperation(mf::Operator op,
 Operation makeLDI(frag_t frag);
 Operation makeXOR(int pos, bool width2bit, frag_t frag);
 Operation makeLUP(int index, frag_t frag);
+Operation makeLUD(int index, int step, frag_t frag1, frag_t frag2);
 Operation makeRPT(frag_t frag, int count);
 Operation makeSFT(bool right, bool postSet, int size, int rpt,
                   const std::vector<frag_t> &output);

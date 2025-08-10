@@ -47,8 +47,9 @@ class Encoder {
   void generateBlob();
 
  private:
-  void generateInitialOperations(MameGlyph &glyph);
-  void tryLDI(TryContext ctx);
+  void generateInitialOperations(MameGlyph &glyph, bool verbose = false,
+                                 std::string indent = "");
+  void tryLUP(TryContext ctx);
   void tryXOR(TryContext ctx);
   void tryRPT(TryContext ctx);
   void trySFT(TryContext ctx);
@@ -58,8 +59,11 @@ class Encoder {
   void tryCPY(TryContext ctx);
   void tryCPX(TryContext ctx);
 
-  void generateLut();
-  void replaceLDItoLUP();
-  int findFragmentFromLUT(frag_t frag);
+  void generateInitialFragmentTable();
+  void generateFullFragmentTable();
+  void optimizeFragmentTable();
+  void fixLUPIndex();
+  void replaceLDItoLUP(bool verbose = false, std::string indent = "");
+  int reverseLookup(frag_t frag);
 };
 }  // namespace mamefont::mamec

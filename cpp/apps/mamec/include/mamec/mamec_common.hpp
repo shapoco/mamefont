@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <vector>
 
 #include <mamefont/mamefont.hpp>
 
@@ -12,9 +13,6 @@ namespace mamefont::mamec {
 extern size_t objectId;
 
 static inline size_t nextObjectId() { return objectId++; }
-
-std::string formatChar(int code);
-std::string byteToHexStr(uint8_t byte);
 
 static inline bool maskedEqual(frag_t a, frag_t b, frag_t mask,
                                uint8_t cpxFlags = 0) {
@@ -51,5 +49,9 @@ static inline constexpr int baseCostOf(mf::Operator op) {
       return 9999;
   }
 }
+
+std::string formatChar(int code);
+std::string byteToHexStr(uint8_t byte);
+void dumpByteArray(const std::vector<uint8_t> &arr, const std::string &indent);
 
 }  // namespace mamefont::mamec

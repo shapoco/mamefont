@@ -24,6 +24,14 @@ Operation makeLUP(int index, frag_t frag) {
   return makeOperation(mf::Operator::LUP, output, 0, arg1);
 }
 
+Operation makeLUD(int index, int step, frag_t frag1, frag_t frag2) {
+  uint8_t arg1 = 0;
+  arg1 |= mf::LUD_INDEX::place(index);
+  arg1 |= mf::LUD_STEP::place(step == 1);
+  std::vector<frag_t> output({frag1, frag2});
+  return makeOperation(mf::Operator::LUD, output, 0, arg1);
+}
+
 Operation makeRPT(frag_t frag, int count) {
   uint8_t arg1 = mf::RPT_REPEAT_COUNT::place(count);
   std::vector<frag_t> output;

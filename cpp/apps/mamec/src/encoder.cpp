@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -16,6 +17,9 @@
   for (int value = field::MIN; value <= field::MAX; value += field::STEP)
 
 namespace mamefont::mamec {
+
+static void dumpSearchTree(const BufferState &state, int *nodeCount, int length,
+                           int pos);
 
 void Encoder::addFont(const BitmapFont &bmpFont) {
   if (options.verbose) {
@@ -59,56 +63,92 @@ void Encoder::addGlyph(const BitmapFont &bmpFont, const BitmapGlyph &bmpGlyph) {
 
 void Encoder::encode() {
   if (options.verbose) {
-    std::cout << "Encoding glyphs..." << std::endl;
-    std::cout << "  Generating initial operations..." << std::endl;
+    std::cout << "Generating initial fragment table..." << std::endl;
+  }
+  generateInitialFragmentTable();
+  if (options.verbose) {
+    dumpByteArray(lut, "  ");
+    std::cout << "  (" << lut.size() << " entries)" << std::endl;
   }
 
+  if (options.verbose) {
+    std::cout << "Encoding glyphs..." << std::endl;
+  }
   for (auto &glyphPair : glyphs) {
     MameGlyph &glyph = glyphPair.second;
-
-    // Generate operations for the glyph
-    generateInitialOperations(glyph);
+    if (options.verbose) {
+      std::cout << "  Generating operations for " << formatChar(glyph->code)
+                << std::endl;
+    }
+    bool v = options.verbose && options.verboseForCode == glyph->code;
+    generateInitialOperations(glyph, v, "    ");
   }
 
-  generateLut();
-
-  replaceLDItoLUP();
-}
-
-static void dumpTree(const BufferState &state, int *nodeCount, int pos) {
-  nodeCount[state->pos]++;
-  if (state->pos != pos) {
-    // todo: delete
-    throw std::runtime_error("BufferState position mismatch: expected " +
-                             std::to_string(pos) + ", got " +
-                             std::to_string(state->pos));
-  }
-  for (const auto &nextPair : state->childState) {
-    dumpTree(nextPair.second, nodeCount, pos + 1);
-  }
-}
-
-void Encoder::generateInitialOperations(MameGlyph &glyph) {
   if (options.verbose) {
-    std::cout << "    Generating operations for " << formatChar(glyph->code)
-              << std::endl;
+    std::cout << "Regenerating fragment table..." << std::endl;
+  }
+  generateFullFragmentTable();
+  if (options.verbose) {
+    dumpByteArray(lut, "  ");
+    std::cout << "  (" << lut.size() << " entries)" << std::endl;
   }
 
+  if (options.verbose) {
+    std::cout << "Optimizing LUT..." << std::endl;
+  }
+  optimizeFragmentTable();
+  if (options.verbose) {
+    dumpByteArray(lut, "  ");
+    std::cout << "  (" << lut.size() << " entries)" << std::endl;
+  }
+
+  if (options.verbose) {
+    std::cout << "Replacing LDI with LUP/LUD..." << std::endl;
+  }
+  replaceLDItoLUP(options.verbose, "  ");
+}
+
+void Encoder::generateInitialFragmentTable() {
+  // count how many times each fragment is used in LDI operations
+  std::map<frag_t, int> lutMap;
+  for (const auto &glyphPair : glyphs) {
+    for (frag_t frag : glyphPair.second->fragments) {
+      if (lutMap.contains(frag)) {
+        lutMap[frag] += 1;
+      } else {
+        lutMap[frag] = 1;
+      }
+    }
+  }
+
+  // Sort the LUT by usage count in descending order
+  std::vector<std::pair<int, frag_t>> sortedLut;
+  for (const auto &kv : lutMap) {
+    sortedLut.push_back({kv.second, kv.first});
+  }
+  std::sort(sortedLut.begin(), sortedLut.end(),
+            [](const auto &a, const auto &b) { return a.first > b.first; });
+
+  // Create the initial LUT
+  int n = 0;
+  lut.clear();
+  for (const auto &kv : sortedLut) {
+    lut.push_back(kv.second);
+    if (++n >= mf::MAX_LUT_SIZE / 2) break;
+  }
+}
+
+void Encoder::generateInitialOperations(MameGlyph &glyph, bool verbose,
+                                        std::string indent) {
   int numFrags = glyph->fragments.size();
 
   std::vector<frag_t> compareMask(numFrags, 0xFF);
   if (!options.forceZeroPadding) {
     compareMask = glyph->createCompareMaskArray();
 
-    if (options.verbose && options.verboseForCode == glyph->code) {
-      std::cout << "      Compare mask: " << std::endl;
-      size_t n = compareMask.size();
-      for (size_t i = 0; i < n; i++) {
-        if (i % 16 == 0) std::cout << "        ";
-        std::cout << byteToHexStr(compareMask[i]) << " ";
-        if ((i + 1) % 16 == 0 || i == n - 1) std::cout << std::endl;
-      }
-      std::cout << std::endl;
+    if (verbose) {
+      std::cout << indent << "Compare mask: " << std::endl;
+      dumpByteArray(compareMask, indent + "  ");
     }
   }
 
@@ -137,26 +177,38 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
   }
   if (false && duplicatedCode >= 0) {
     // todo: Enable
-    if (options.verbose) {
-      std::cout << "    Fragment duplication found: " << formatChar(glyph->code)
+    if (verbose) {
+      std::cout << indent
+                << "Fragment duplication found: " << formatChar(glyph->code)
                 << " --> " << formatChar(duplicatedCode) << std::endl;
     }
     glyph->fragmentsSameAsCode = duplicatedCode;
   }
 
+  std::vector<std::vector<int>> scoreBoard(numFrags + 1,
+                                           std::vector<int>(256, DUMMY_COST));
+
+  BufferState goalState = nullptr;
+
   StateQueue waitList;
   auto first = std::make_shared<BufferStateClass>(0, 0, nullptr);
   waitList.put(first, 0);
 
-  BufferState bestGoal = nullptr;
-  int bestGoalCost = DUMMY_COST;
+  int treeLeafCount[numFrags + 1] = {0};
+  char treeStateStr[numFrags + 2] = {' '};
+  treeStateStr[numFrags + 1] = '\0';
 
+  if (verbose) {
+    std::cout << indent << "Searching solution..." << std::endl;
+  }
   while (!waitList.empty()) {
     BufferState curr = waitList.popBest();
 
     if (curr->pos >= numFrags) {
-      bestGoal = curr;
-      bestGoalCost = curr->bestCost;
+      if (curr->pos > numFrags) {
+        throw std::runtime_error("Search overrun");
+      }
+      goalState = curr;
       break;
     }
 
@@ -165,7 +217,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
 
     std::vector<Operation> oprs;
     TryContext ctx{glyph->code, oprs, curr, future, mask};
-    tryLDI(ctx);
+    tryLUP(ctx);
     tryXOR(ctx);
     tryRPT(ctx);
     trySFT(ctx);
@@ -173,6 +225,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
     tryCPY(ctx);
     tryCPX(ctx);
 
+    bool treeChanged = false;
     for (const auto &opr : oprs) {
 #if 0
       // todo delete checker code:
@@ -198,29 +251,44 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
       }
 
       int nextCost = curr->bestCost + opr->cost;
-      if (nextCost < p->bestCost) {
+      int otherCost = scoreBoard[p->pos][p->lastFrag];
+      if (nextCost < p->bestCost && nextCost < otherCost) {
         p->bestOpr = opr;
         p->bestPrev = curr;
         waitList.put(p, nextCost);
+        scoreBoard[p->pos][p->lastFrag] = nextCost;
+        treeChanged = true;
       }
     }
 
-    if (options.verbose && options.verboseForCode == glyph->code) {
-      int numNodes[numFrags + 1] = {0};
-      dumpTree(first, numNodes, 0);
-      for (int i = 0; i <= numFrags; i++) {
-        printf("%3d ", numNodes[i]);
+    if (treeChanged && verbose) {
+      memset(treeLeafCount, 0, sizeof(treeLeafCount));
+      dumpSearchTree(first, treeLeafCount, numFrags + 1, 0);
+      bool strChanged = false;
+      for (int i = 0; i < numFrags + 1; i++) {
+        char c = '.';
+        if (treeLeafCount[i] > 0) {
+          int digit = log2(treeLeafCount[i]) / log2(2) + 1;
+          if (digit > 9) digit = 9;
+          c = '0' + digit;
+        }
+        if (treeStateStr[i] != c) {
+          treeStateStr[i] = c;
+          strChanged = true;
+        }
       }
-      printf("\n");
+      if (strChanged) {
+        std::cout << indent << "  [" << treeStateStr << "]" << std::endl;
+      }
     }
   }
 
-  if (!bestGoal) {
+  if (!goalState) {
     throw std::runtime_error("No solutions found for " +
                              formatChar(glyph->code));
   }
 
-  BufferState p = bestGoal;
+  BufferState p = goalState;
   std::vector<Operation> oprs;
   while (p->id != first->id) {
     oprs.insert(oprs.begin(), p->bestOpr);
@@ -232,24 +300,25 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
     for (const auto &opr : oprs) {
       opr->writeCodeTo(byteCode);
     }
-    std::cout << "    " << oprs.size() << " operations generated." << std::endl;
-    glyph->report("      ");
-    for (size_t i = 0; i < byteCode.size(); i++) {
-      if (i % 16 == 0) {
-        std::cout << "        ";
-      }
-      std::cout << byteToHexStr(byteCode[i]) << " ";
-      if (i % 16 == 15 || i == byteCode.size() - 1) {
-        std::cout << std::endl;
-      }
-    }
+    std::cout << indent << oprs.size() << " operations, " << byteCode.size()
+              << " bytes generated." << std::endl;
+    dumpByteArray(byteCode, indent + "  ");
   }
 
   glyph->operations = oprs;
 }
 
-void Encoder::tryLDI(TryContext ctx) {
-  ctx.oprs.push_back(makeLDI(ctx.future[0]));
+void Encoder::tryLUP(TryContext ctx) {
+  for (int frag = 0; frag <= 0xFF; frag++) {
+    if (maskedEqual(frag, ctx.future[0], ctx.compareMask[0])) {
+      int index = reverseLookup(frag);
+      if (index >= 0) {
+        ctx.oprs.push_back(makeLUP(index, frag));
+      } else {
+        ctx.oprs.push_back(makeLDI(frag));
+      }
+    }
+  }
 }
 
 void Encoder::tryXOR(TryContext ctx) {
@@ -459,17 +528,28 @@ void Encoder::tryCPX(TryContext ctx) {
   }
 }
 
-void Encoder::generateLut() {
-  if (options.verbose) {
-    std::cout << "Generating LUT..." << std::endl;
+static void dumpSearchTree(const BufferState &state, int *nodeCount, int length,
+                           int pos) {
+#if 0
+  if (state->pos != pos || pos >= length) {
+    throw std::runtime_error("BufferState position mismatch: expected " +
+                             std::to_string(pos) + ", got " +
+                             std::to_string(state->pos));
   }
+#endif
+  nodeCount[state->pos]++;
+  for (const auto &nextPair : state->childState) {
+    dumpSearchTree(nextPair.second, nodeCount, length, pos + 1);
+  }
+}
 
+void Encoder::generateFullFragmentTable() {
   // count how many times each fragment is used in LDI operations
   std::map<frag_t, int> lutMap;
   for (const auto &glyphPair : glyphs) {
     const MameGlyph &glyph = glyphPair.second;
     for (const auto &opr : glyph->operations) {
-      if (opr->op == mf::Operator::LDI) {
+      if (opr->op == mf::Operator::LDI || opr->op == mf::Operator::LUP) {
         frag_t frag = opr->output[0];
         if (lutMap.find(frag) == lutMap.end()) {
           lutMap[frag] = 1;
@@ -488,37 +568,224 @@ void Encoder::generateLut() {
   std::sort(sortedLut.begin(), sortedLut.end(),
             [](const auto &a, const auto &b) { return a.first > b.first; });
 
-  // Create the final LUT, keeping only the fragments
+  // Generate the full LUT
   int n = 0;
   lut.clear();
   for (const auto &kv : sortedLut) {
     lut.push_back(kv.second);
     if (++n >= mf::MAX_LUT_SIZE) break;
   }
+
+  fixLUPIndex();
 }
 
-void Encoder::replaceLDItoLUP() {
-  if (options.verbose) {
-    std::cout << "Replacing LDI with LUP/LUD..." << std::endl;
+void Encoder::optimizeFragmentTable() {
+  // Detecte frequent sequences of two fragments
+  std::map<uint16_t, int> sequenceCountMap;
+  for (auto frag1 : lut) {
+    for (auto frag2 : lut) {
+      sequenceCountMap[(frag1 << 8) | frag2] = 0;
+    }
+  }
+  for (const auto &glyphPair : glyphs) {
+    const MameGlyph &glyph = glyphPair.second;
+    int frag1 = -1;
+    for (const auto &opr2 : glyph->operations) {
+      int frag2 = -1;
+      if (opr2->output.size() == 1 && reverseLookup(opr2->output[0]) >= 0) {
+        frag2 = opr2->output[0];
+      }
+      if (frag1 >= 0 && frag2 >= 0) {
+        uint16_t sequence = (frag1 << 8) | frag2;
+        sequenceCountMap[sequence]++;
+      }
+      frag1 = frag2;
+    }
   }
 
+  // Sort sequences by usage count in descending order
+  std::vector<std::pair<uint16_t, int>> mostFreqSeqs;
+  for (const auto &kv : sequenceCountMap) {
+    mostFreqSeqs.push_back({kv.first, kv.second});
+  }
+  std::sort(mostFreqSeqs.begin(), mostFreqSeqs.end(),
+            [](const auto &a, const auto &b) { return a.second < b.second; });
+
+  std::vector<std::vector<frag_t>> sequences;
+  int seqSize = 0;
+  int numFrozen = 0;
+  bool headFrozen = false;
+  while (!mostFreqSeqs.empty()) {
+    auto seqPair = mostFreqSeqs.back();
+    mostFreqSeqs.pop_back();
+
+    uint16_t seq = seqPair.first;
+    frag_t frag1 = (seq >> 8) & 0xFF;
+    frag_t frag2 = seq & 0xFF;
+
+    int frag1index = reverseLookup(frag1);
+    int frag2index = reverseLookup(frag2);
+
+    if (frag1index >= 0 && frag2index < 0) {
+      int n = 0;
+      for (auto &seq : sequences) {
+        n += seq.size();
+        if (seq[0] == frag2) {
+          if (n <= numFrozen) {
+            // remove from LUT
+            lut.erase(lut.begin() + frag2index);
+            seq.insert(seq.begin(), frag1);
+            seqSize += 1;
+          }
+          break;
+        }
+      }
+    } else if (frag1index < 0 && frag2index >= 0) {
+      int n = 0;
+      for (auto &seq : sequences) {
+        n += seq.size();
+        if (seq.back() == frag1) {
+          if (n <= numFrozen) {
+            // remove from LUT
+            lut.erase(lut.begin() + frag1index);
+            seq.push_back(frag2);
+            seqSize += 1;
+          }
+          break;
+        }
+      }
+    } else if (frag1index >= 0 && frag2index >= 0) {
+      if (frag1 == frag2) {
+        lut.erase(lut.begin() + frag1index);
+        sequences.push_back({frag1});
+        seqSize += 1;
+      } else {
+        lut.erase(lut.begin() + std::max(frag1index, frag2index));
+        lut.erase(lut.begin() + std::min(frag1index, frag2index));
+        sequences.push_back({frag1, frag2});
+        seqSize += 2;
+      }
+    } else {
+      int seq1index = -1;
+      int n = 0;
+      for (int i = 0; i < sequences.size(); i++) {
+        n += sequences[i].size();
+        if (n > numFrozen) break;
+        if (sequences[i].back() == frag1) {
+          seq1index = i;
+          break;
+        }
+      }
+      int seq2index = -1;
+      for (int i = 0; i < sequences.size(); i++) {
+        n += sequences[i].size();
+        if (n > numFrozen) break;
+        if (sequences[i][0] == frag2) {
+          seq2index = i;
+          break;
+        }
+      }
+      if (seq1index >= 0 && seq2index >= 0 && seq1index != seq2index) {
+        // Merge sequences
+        auto seq1 = sequences[seq1index];
+        auto seq2 = sequences[seq2index];
+        int minIndex = std::min(seq1index, seq2index);
+        int maxIndex = std::max(seq1index, seq2index);
+        sequences.erase(sequences.begin() + maxIndex);
+        sequences.erase(sequences.begin() + minIndex);
+        seq1.insert(seq1.end(), seq2.begin(), seq2.end());
+        sequences.insert(sequences.begin() + minIndex, seq1);
+      }
+    }
+
+    if (!headFrozen && seqSize >= mf::LUD_INDEX::MAX) {
+      headFrozen = true;
+    }
+  }
+
+  std::vector<frag_t> newLut;
+  for (const auto &seq : sequences) {
+    newLut.insert(newLut.end(), seq.begin(), seq.end());
+  }
+  newLut.insert(newLut.end(), lut.begin(), lut.end());
+  lut = std::move(newLut);
+
+  fixLUPIndex();
+}
+
+void Encoder::fixLUPIndex() {
+  // fix existing LUP operations
   for (auto &glyphPair : glyphs) {
     MameGlyph &glyph = glyphPair.second;
-    int n = glyph->operations.size();
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < glyph->operations.size(); i++) {
       auto &opr = glyph->operations[i];
-      if (opr->op == mf::Operator::LDI) {
-        frag_t frag = opr->output[0];
-        int index = findFragmentFromLUT(frag);
-        if (index >= 0) {
-          glyph->operations[i] = makeLUP(index, frag);
+      if (opr->op == mf::Operator::LUP) {
+        int newIndex = reverseLookup(opr->output[0]);
+        if (newIndex >= 0) {
+          glyph->operations[i] = makeLUP(newIndex, opr->output[0]);
+        } else {
+          glyph->operations[i] = makeLDI(opr->output[0]);
+          std::cerr << "  *WARNING: LUP unexpectedly replaced with LDI for "
+                    << formatChar(glyph->code) << ", since fragment 0x"
+                    << byteToHexStr(opr->output[0])
+                    << " not found in fragment table." << std::endl;
         }
       }
     }
   }
 }
 
-int Encoder::findFragmentFromLUT(frag_t frag) {
+void Encoder::replaceLDItoLUP(bool verbose, std::string indent) {
+  int numReplacedOps = 0;
+  for (auto &glyphPair : glyphs) {
+    MameGlyph &glyph = glyphPair.second;
+
+    // replace single output instructions with LUP as possible
+    for (int i = 0; i < glyph->operations.size(); i++) {
+      auto &opr = glyph->operations[i];
+      if (opr->output.size() == 1) {
+        frag_t frag = opr->output[0];
+        int index = reverseLookup(frag);
+        if (index >= 0) {
+          glyph->operations[i] = makeLUP(index, frag);
+        }
+      }
+    }
+
+    // replace pair of LUP with LUD if possible
+    int index1 = -1;
+    frag_t frag1 = 0x00;
+    for (int i = 0; i < glyph->operations.size(); i++) {
+      auto &opr = glyph->operations[i];
+      int index2 = -1;
+      frag_t frag2 = 0x00;
+      if (opr->op == mf::Operator::LUP) {
+        index2 = mf::LUP_INDEX::read(opr->code[0]);
+        frag2 = opr->output[0];
+      }
+      if (index1 >= 0 && index2 >= 0 && index1 <= mf::LUD_INDEX::MAX &&
+          (index1 == index2 || index1 + 1 == index2)) {
+        int step = index2 - index1;
+        glyph->operations[i - 1] = makeLUD(index1, step, frag1, frag2);
+        glyph->operations.erase(glyph->operations.begin() + i);
+        i--;  // Adjust index after removal
+        index2 = -1;  // Reset index2 to avoid double replacement
+        frag2 = 0x00;  // Reset frag2 to avoid double replacement
+        numReplacedOps++;
+      }
+      index1 = index2;
+      frag1 = frag2;
+    }
+  }
+
+  if (verbose) {
+    std::cout << indent << "Totally " << (numReplacedOps * 2)
+              << " instructions replaced with " << numReplacedOps << " LUD ."
+              << std::endl;
+  }
+}
+
+int Encoder::reverseLookup(frag_t frag) {
   int n = lut.size();
   for (int j = 0; j < n; j++) {
     if (lut[j] == frag) {
