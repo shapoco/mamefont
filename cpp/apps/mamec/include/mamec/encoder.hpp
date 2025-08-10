@@ -23,6 +23,7 @@ struct EncodeOptions {
 };
 
 struct TryContext {
+  const int code;
   std::vector<Operation> &oprs;
   const BufferState &state;
   const VecRef &future;
@@ -52,7 +53,7 @@ class Encoder {
   void tryRPT(TryContext ctx);
   void trySFT(TryContext ctx);
   void trySFI(TryContext ctx);
-  void tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
+  bool tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
                     bool preShift, int size, int period);
   void tryCPY(TryContext ctx);
   void tryCPX(TryContext ctx);

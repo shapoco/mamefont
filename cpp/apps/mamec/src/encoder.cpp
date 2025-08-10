@@ -164,7 +164,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph) {
     VecRef mask(compareMask, curr->pos, numFrags);
 
     std::vector<Operation> oprs;
-    TryContext ctx{oprs, curr, future, mask};
+    TryContext ctx{glyph->code, oprs, curr, future, mask};
     tryLDI(ctx);
     tryXOR(ctx);
     tryRPT(ctx);
@@ -285,29 +285,46 @@ void Encoder::tryRPT(TryContext ctx) {
 }
 
 void Encoder::trySFT(TryContext ctx) {
-  for (bool right : {false, true}) {
-    for (bool postSet : {false, true}) {
-      FOR_FIELD_VALUES(mf::SFT_SIZE, size) {
-        tryShiftCore(ctx, false, right, postSet, false, size, 1);
+  fragment_t last = ctx.state->lastFrag;
+  if (last == ctx.future[0]) {
+    // If no shift is needed, return early
+    return;
+  }
+  for (bool postSet : {false, true}) {
+    if ((last == 0x00 && !postSet) || (last == 0xFF && postSet)) {
+      // If the last fragment is all zeros or all ones, no shift can change it
+      continue;
+    }
+    FOR_FIELD_VALUES(mf::SFT_SIZE, size) {
+      for (bool right : {false, true}) {
+        if (tryShiftCore(ctx, false, right, postSet, false, size, 1)) {
+          return;
+        }
       }
     }
   }
 }
 
 void Encoder::trySFI(TryContext ctx) {
-  for (bool right : {false, true}) {
-    for (bool postSet : {false, true}) {
-      // for (bool preShift : {false, true}) {
-      int preShift = false;
+  fragment_t last = ctx.state->lastFrag;
+  for (bool postSet : {false, true}) {
+    if ((last == 0x00 && !postSet) || (last == 0xFF && postSet)) {
+      // If the last fragment is all zeros or all ones, no shift can change it
+      continue;
+    }
+    for (bool preShift : {false, true}) {
       FOR_FIELD_VALUES(mf::SFI_PERIOD, period) {
-        tryShiftCore(ctx, true, right, postSet, preShift, 1, period);
+        for (bool right : {false, true}) {
+          if (tryShiftCore(ctx, true, right, postSet, preShift, 1, period)) {
+            return;
+          }
+        }
       }
-      //}
     }
   }
 }
 
-void Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
+bool Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
                            bool preShift, int size, int period) {
   int rptMin = isSFI ? mf::SFI_REPEAT_COUNT::MIN : mf::SFT_REPEAT_COUNT::MIN;
   int rptMax = isSFI ? mf::SFI_REPEAT_COUNT::MAX : mf::SFT_REPEAT_COUNT::MAX;
@@ -328,7 +345,7 @@ void Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
 
   int offset = 0;
   for (int rpt = (preShift ? 0 : 1); rpt <= rptMax; rpt++) {
-    int startPhase = preShift ? (period - 1) : 0;
+    int startPhase = (rpt == 0 && preShift) ? (period - 1) : 0;
     for (int phase = startPhase; phase < period; phase++) {
       fragment_t lastWork = work;
       if (phase == period - 1) {
@@ -350,7 +367,7 @@ void Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
         generated.push_back(work);
         offset++;
       } else {
-        return;
+        return false;
       }
     }
     if (rpt >= rptMin && changeDetected) {
@@ -362,6 +379,7 @@ void Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
       }
     }
   }
+  return changeDetected;
 }
 
 void Encoder::tryCPY(TryContext ctx) {
@@ -392,6 +410,7 @@ void Encoder::tryCPY(TryContext ctx) {
       }
     }
   nextLength:
+    continue;  // dummy op to suppress warning
   }
 }
 
@@ -437,6 +456,7 @@ void Encoder::tryCPX(TryContext ctx) {
       }
     }
   nextLength:
+    continue;  // dummy op to suppress warning
   }
 }
 
