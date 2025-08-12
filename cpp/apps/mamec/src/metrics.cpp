@@ -46,11 +46,11 @@ void dumpMetrics(const std::vector<uint8_t> &blob, std::ostream &os,
   std::sort(operators.begin(), operators.end(),
             [](const auto &a, const auto &b) { return a.first < b.first; });
 
-  std::map<mf::Operator, int> numInstsPerOp;
+  std::map<mf::Operator, int> codeSizePerOp;
   std::map<mf::Operator, int> genFragsPerOp;
   for (const auto &opPair : operators) {
     auto op = opPair.second;
-    numInstsPerOp[op] = 0;
+    codeSizePerOp[op] = 0;
     genFragsPerOp[op] = 0;
   }
 
@@ -60,7 +60,7 @@ void dumpMetrics(const std::vector<uint8_t> &blob, std::ostream &os,
 
   int numTotalPixels = 0;
   int totalGenFrags = 0;
-  int totalNumInsts = 0;
+  int totalCodeSize = 0;
 
   for (int code = firstCode; code <= lastCode; code++) {
     mf::Glyph glyph;
@@ -78,16 +78,16 @@ void dumpMetrics(const std::vector<uint8_t> &blob, std::ostream &os,
     numTotalPixels += glyph.glyphWidth * font.glyphHeight();
     for (const auto &opPair : operators) {
       auto op = opPair.second;
-      int numInsts = stm.numInstsPerOperator[static_cast<int>(op)];
+      int codeSize = stm.numInstsPerOperator[static_cast<int>(op)] * mf::instSizeOf(op);
       int genFrags = stm.generatedFragsPerOperator[static_cast<int>(op)];
-      numInstsPerOp[op] += numInsts;
+      codeSizePerOp[op] += codeSize;
       genFragsPerOp[op] += genFrags;
-      totalNumInsts += numInsts;
+      totalCodeSize += codeSize;
       totalGenFrags += genFrags;
     }
   }
   float totalCompRatio =
-      100.0f * (totalNumInsts - totalGenFrags) / totalGenFrags;
+      100.0f * (totalCodeSize - totalGenFrags) / totalGenFrags;
   float memEff = (float)numTotalPixels / blob.size();
 
   auto fragShape = font.verticalFragment() ? "Vertical" : "Horizontal";
@@ -113,16 +113,16 @@ void dumpMetrics(const std::vector<uint8_t> &blob, std::ostream &os,
   os << indent << "  Bytecodes     : " << i2s(bcSize, 4) << " Bytes (" << f2s(bcPerGlyph, 6, 2) << " Bytes/glyph)\n";
   os << indent << "  Total         : " << i2s(blob.size(), 4) << " Bytes (" << f2s(totalPerGlyph, 6, 2) << " Bytes/glyph)\n";
   os << indent << "Compression Performance:\n";
-  int totalDiff = totalGenFrags - totalNumInsts;
+  int totalDiff = totalGenFrags - totalCodeSize;
   for (const auto &opPair : operators) {
     auto op = opPair.second;
-    int numInsts = numInstsPerOp[op];
+    int numInsts = codeSizePerOp[op];
     int genFrags = genFragsPerOp[op];
     if (numInsts == 0 && genFrags == 0) continue;
     float ratio = totalDiff == 0 ? 0.0f : (totalCompRatio * (genFrags - numInsts) / totalDiff);
     os << indent << "  " << compPerf(mf::mnemonicOf(op), genFrags, numInsts, ratio) << "\n";
   }
-  os << indent << "  " << compPerf("Total", totalGenFrags, totalNumInsts, totalCompRatio) << "\n";
+  os << indent << "  " << compPerf("Total", totalGenFrags, totalCodeSize, totalCompRatio) << "\n";
   os << indent << "Memory Efficiency: " << f2s(memEff, 6, 3) << " px/Byte\n";
   // clang-format on
 }
