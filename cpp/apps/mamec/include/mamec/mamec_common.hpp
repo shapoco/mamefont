@@ -1,14 +1,25 @@
 #pragma once
 
 #include <stdint.h>
+#include <sstream>
 #include <vector>
 
 #include <mamefont/mamefont.hpp>
 
 namespace mf = mamefont;
-using frag_t = mf::frag_t;
 
 namespace mamefont::mamec {
+
+using frag_t = mf::frag_t;
+
+enum class FileType {
+  NONE,
+  BMP,
+  PNG,
+  JPEG,
+  MAME_JSON,
+  MAME_HPP,
+};
 
 extern size_t objectId;
 
@@ -16,10 +27,10 @@ static inline size_t nextObjectId() { return objectId++; }
 
 static inline bool maskedEqual(frag_t a, frag_t b, frag_t mask,
                                uint8_t cpxFlags = 0) {
-  if (mf::CPX_BIT_REVERSE::read(cpxFlags)) {
+  if (mf::CPX::BitReverse::read(cpxFlags)) {
     a = mf::reverseBits(a);
   }
-  if (mf::CPX_INVERSE::read(cpxFlags)) {
+  if (mf::CPX::Inverse::read(cpxFlags)) {
     a = ~a;
   }
   return ((a ^ b) & mask) == 0;
@@ -50,8 +61,17 @@ static inline constexpr int baseCostOf(mf::Operator op) {
   }
 }
 
-std::string formatChar(int code);
+std::string i2s(int value, int width = 4);
+std::string f2s(float value, int width = 5, int precision = 2);
+std::string c2s(int code);
+std::string s2s(std::string s, int width = 4);
+static inline std::string yn(bool value) { return value ? "Yes" : "No"; }
 std::string byteToHexStr(uint8_t byte);
-void dumpByteArray(const std::vector<uint8_t> &arr, const std::string &indent);
+void dumpByteArray(const std::vector<uint8_t> &arr, const std::string &indent,
+                   int offset = 0, int length = -1);
+void dumpCStyleArrayContent(std::ostream &os, const std::vector<uint8_t> &arr,
+                            const std::string &indent, int offset = 0,
+                            int length = -1, bool hex = true,
+                            bool endsWithComma = true);
 
 }  // namespace mamefont::mamec

@@ -25,7 +25,7 @@ BitmapFontClass::BitmapFontClass(const std::string &bmpPathStr) {
 
   // parse family name and dimensions from directory name
   {
-    std::string fullName = bmpPath.parent_path().filename().string();
+    fullName = bmpPath.parent_path().filename().string();
     size_t lastUnderlinePos = fullName.find_last_of('_');
     if (lastUnderlinePos == std::string::npos) {
       throw std::runtime_error(
@@ -114,7 +114,7 @@ BitmapFontClass::BitmapFontClass(const std::string &bmpPathStr) {
       int x = 0;
       while (x < bmp->width) {
         if (bmp->get(x, y) == GrayBitmapClass::MARKER_GLYPH) {
-          auto glyph = extractGlyph(codes[glyph_index], bmp, x, y);
+          auto glyph = decodeGlyph(codes[glyph_index], bmp, x, y);
           glyph_index += 1;
           glyphs.push_back(glyph);
           x += glyph->width;
@@ -142,7 +142,7 @@ const BitmapGlyph BitmapFontClass::getGlyph(int code) const {
   return nullptr;
 }
 
-std::shared_ptr<BitmapGlyphClass> BitmapFontClass::extractGlyph(
+std::shared_ptr<BitmapGlyphClass> BitmapFontClass::decodeGlyph(
     int code, const std::shared_ptr<GrayBitmapClass> &bmp, int x, int y) {
   // Find end of glyph marker
   int w = 0;

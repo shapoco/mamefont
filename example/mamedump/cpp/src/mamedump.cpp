@@ -9,7 +9,7 @@
 
 int main(int argc, char** argv) {
   mamefont::Status ret;
-  const auto& font = TARGET_FONT_NAME;
+  const mamefont::Font font(TARGET_BLOB_NAME);
 
   int glyphHeight = font.glyphHeight();
   int numChars = font.numGlyphs();
@@ -22,10 +22,10 @@ int main(int argc, char** argv) {
   printf("font32.verticalFragment() : %d\n", verticalFragment);
   fflush(stdout);
 
-  int lutSize = font.lutSize();
-  printf("LUT (size=%1d):\n", lutSize);
-  for (int i = 0; i < lutSize; i++) {
-    mamefont::frag_t frag = font.getLutEntry(i);
+  int fragmentTableSize = font.fragmentTableSize();
+  printf("Fragment Table (size=%1d):\n", fragmentTableSize);
+  for (int i = 0; i < fragmentTableSize; i++) {
+    mamefont::frag_t frag = font.lookupFragment(i);
     printf("  %2d: 0x%02X ", i, (int)frag);
     uint8_t tmp = frag;
     for (int ibit = 0; ibit < 8; ibit++) {
@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
   }
 
   uint8_t stride;
-  uint8_t buff[font.getRequiredGlyphBufferSize(&stride) * 2];
+  uint8_t buff[font.calcGlyphBufferSize(&stride) * 2];
 
   constexpr int X_ZOOM = 3;
 
@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
     }
     printf(" (0x%02X)\n", (int)code);
     if (ret == mamefont::Status::SUCCESS) {
-      int glyphWidth = glyph.width();
+      int glyphWidth = glyph.glyphWidth;
 
       mamefont::GlyphBuffer glyphBuff;
       glyphBuff.data = buff;

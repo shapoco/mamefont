@@ -21,6 +21,7 @@ std::unordered_map<Dimension, int> parseDimensionIdentifier(
 
 class BitmapFontClass {
  public:
+  std::string fullName;
   std::string familyName;
   int bodySize = -1;
   int capHeight = -1;
@@ -35,7 +36,7 @@ class BitmapFontClass {
   const BitmapGlyph getGlyph(int code) const;
 
  private:
-  std::shared_ptr<BitmapGlyphClass> extractGlyph(
+  std::shared_ptr<BitmapGlyphClass> decodeGlyph(
       int code, const std::shared_ptr<GrayBitmapClass> &bmp, int x, int y);
 };
 

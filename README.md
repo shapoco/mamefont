@@ -4,37 +4,56 @@ Compressed font format specification and library for tiny-footprint embedded pro
 
 "Mame" (まめ, 豆) means "bean(s)" in Japanese.
 
+> [!WARNING]
+> The specifications are currently under development and may change without notice.
+
 # Concept
 
 ![](./img/concept.svg)
 
 ![](./img/scope.svg)
 
+## Glyph Fragmentation
+
+![](./img/frag_shape.svg)
+
 # Format Specification
 
 ## Blob Structure
 
+![](./img/format_overview.svg)
+
 |Size \[Bytes\]|Name|
-|:--:|:--|
+|:--|:--|
 |8|Font Header|
-|(4 or 2) \* `numGlyphs`|Glyph Table|
-|`lutSize`|Fragment Lookup Table (LUT)|
+|(Variable)|Extended Header|
+|(1, 2, or 4) \* (number of glyphs)|Glyph Table|
+|`fragmentTableSize`|Fragment Table|
 |(Variable)|Bytecode Blocks|
 
 ## Font Header
 
 A structure that provides information common to the entire font.
 
-|Size \[Bytes\]|Value|Description|
-|:--:|:--|:--|
-|1|`formatVersion`|0x01|
-|1|`fontFlags`|Format Flags|
-|1|`firstCode`|ASCII code of the first entry of Glyph Table|
-|1|`numGlyphs` - 1|`numGlyphs` is number of entries of Glyph Table|
-|1|`lutSize` - 1|`lutSize` is number of entries of LUT.<br>2 ≦ `lutSize` ≦ 64, and multiple of 2|
-|1|`fontDimension[0]`|Dimension of Font|
-|1|`fontDimension[1]`|Dimension of Font|
-|1|`fontDimension[2]`|Dimension of Font|
+|Byte Offset|Bit Range|Value|
+|:--:|:--:|:--|
+|0|7:4|(Reserved)|
+||3:0|`formatVersion`|
+|1|7:0|`fontFlags`|
+|2|7:0|`firstCode`|
+|3|7:0|`lastCode`|
+|4|7:5|(Reserved)||
+||4:0|`fragmentTableSize` / 2 - 1|
+|5|7:6|(Reserved)|
+||5:0|`maxGlyphWidth` - 1|
+|6|7:6|(Reserved)|
+||5:0|`glyphHeight` - 1|
+|7|7:4|`xMonoSpacing`|
+||3:0|`ySpacing`|
+
+### `formatVersion`
+
+The format version of the font. Its value must be 0x1.
 
 ### `fontFlags`
 
@@ -44,86 +63,147 @@ A structure that provides information common to the entire font.
 |:--:|:--|:--|
 |7|`verticalFragment`|0: Horizontal Fragment,<br>1: Vertical Fragment|
 |6|`msb1st`|0: LSB=Near Pixel,<br>1: LSB=Far Pixel|
-|5|`shrinkedGlyphTable`|0: Normal Format,<br>1: Shrinked Format|
-|4:0|(Reserved)||
+|5|`largeFont`|0: Small Size Format for Glyph Table,<br>1: Normal Size Format for Glyph Table|
+|4|`proportional`|0: Monospaced Format for Glyph Table,<br>1: Proportional Format for Glyph Table|
+|3:0|(Reserved)||
+|0|`hasExtendedHeader`|0: No Extended Header,<br>1: Extended Header exists|
 
-![](./img/frag_shape.svg)
+### `firstCode` / `lastCode`
 
-### `fontDimension`
+ASCII code of the first/last entry of Glyph Table. `firstCode` must not exceed `lastGlyphs`.
 
-|Index|Bit Range|Value|Description|
-|:--:|:--:|:--|:--|
-|\[0\]|7:6|(Reserved)||
-||5:0|`glyphHeight` - 1|`glyphHeight` is height of glyph in pixels|
-|\[1\]|7:6|(Reserved)||
-||5:0|`ySpacing`|`ySpacing` is the distance in pixels from the bottom of the current line to the top of the next line|
-|\[2\]|7:6|(Reserved)||
-||5:0|`maxGlyphWidth` - 1|`maxGlyphWidth` is `glyphWidth` value of widest glyph in the font.|
+### `fragmentTableSize`
 
-`glyphHeight` + `ySpacing` is same as `yAdvance` of GFXfont.
+Number of entries of Fragment Table. Must be in the range 2 ≦ `fragmentTableSize` ≦ 64 and a multiple of 2.
 
-`maxGlyphWidth` will be used by decompressor to determine size of Glyph Buffer. If the font does not contain any valid glyphs, then `maxGlyphWidth` must have a value of 1 (`fontDimension[2]` = 0x00).
+### `maxGlyphWidth`
+
+In monospaced fonts, `maxGlyphWidth` is the common width of all glyphs. In proportional fonts, `maxGlyphWidth` is `glyphWidth` value of widest glyph. Decoder can use this to determine size of Glyph Buffer. If the font does not contain any valid glyphs, then `maxGlyphWidth` must have a value of 1 (`fontDimension[0]` = 0x00).
+
+### `glyphHeight`
+
+Height of glyph in pixels. `glyphHeight` + `ySpacing` is same as `yAdvance` of GFXfont.
+
+### `xMonoSpacing`
+
+In monospaced fonts, `xMonoSpacing` is distance in pixels from the right edge of the current glyph to the left edge of the next glyph. In proportional fonts, this should be ignored.
+
+### `ySpacing`
+
+Distance in pixels from the bottom of the current line to the top of the next line.
+
+## Extended Header
+
+Extended Header are not allowed in the current version. If the `hasExtendedHeader` flag is 1, the decoder must read only `extHeaderSize` and ignore the rest.
+
+|Byte Offset|Bit Range|Value|
+|:--:|:--:|:--|
+|0|7:0|`extHeaderSize` / 2 - 1|
+|1 ... (`extHeaderSize` - 1)|-|(Reserved)|
+
+### `extHeaderSize`
+
+Number of bytes from the beginning to the end of the Extended Header. `extHeaderSize` includes its own size. The range is 2 ≤ `extHeaderSize` ≤ 512 and must be a multiple of 2.
 
 ## Glyph Table
 
-### Normal Table Entry (4 Bytes)
+The glyph table provides the bytecode entry points for each glyph and, in proportional fonts, the horizontal dimension of each glyph.
 
-|Size \[Bytes\]|Value|Description|
-|:--:|:--|:--|
-|2|`entryPoint`|Offset from start of Bytecode Block in bytes|
-|1|`glyphDimension[0]`|Dimension of the glyph|
-|1|`glyphDimension[1]`|Dimension of the glyph|
+There are four glyph table formats depending on the combination of the `largeFont` and `proportional` flags.
 
-#### `glyphDimension`
+|`largeFont`|`proportional`|Format Name|
+|:--:|:--:|:--|
+|0|0|Small Monospaced Format|
+|0|1|Small Proportional Format|
+|1|0|Normal Monospaced Format|
+|1|1|Normal Proportional Format|
 
-|Index|Bit Range|Value|Description|
-|:--:|:--:|:--|:--|
-|\[0\]|7:6|(Reserved)||
-||5:0|`glyphWidth` - 1|`glyphWidth` is glyph width in pixels|
-|\[1\]|7:5|`xNegativeOffset`|The glyph is rendered shifted to the left by the number of pixels specified by `xNegativeOffset`.|
-||4:0|`xSpacing` + 16|`xSpacing` is the distance in pixels from the right edge of the current glyph to the left edge of the next glyph. This must grater than `glyphWidth`.|
+The Small Format (`largeFont` = 0) can be applied when all of the following conditions are met:
 
-`glyphWidth` - `xNegativeOffset` + `xSpacing` is same as `xAdvance` of GFXfont. Depending on these values, rendered characters can overlap, but it is up to the renderer implementation to render this as the font designer expected.
+- 1 ≦ `glyphWidth` ≦ 16 for all glyphs.
+- 0 ≦ `xSpacing` ≦ 3 for all glyphs.
+- 0 ≦ `xStepBack` ≦ 3 for all glyphs.
+- 0 ≦ `entryPoint` ≦ 509 for all glyphs.
 
-### Shrinked Table Entry (2 Bytes)
+For Small Format, all of `entryPoint` must be aligned to 2-Byte boundaries.
 
-The Shrinked Format of the Glyph Table can be applied when all of the following conditions are met:
+In the monospaced format, the width of each glyph is specified by `maxGlyphWidth`, and the spacing between characters is specified by `xMonoSpacing`.
 
-- All `glyphWidth` in the font are in the range of 1 to 16.
-- All `xSpacing` in the font are in the range of 0 to 3.
-- All `xNegativeOffset` in the font are in the range of 0 to 3.
-- Total size of the Bytecode Block is 512 Byte or less.
+The size of the glyph table must be a multiple of 2 bytes. If the total size of each field does not reach a 2-byte boundary, padding must be inserted at the end. The padding value must be 0xFF.
 
-In this case, all of `entryPoint` must be aligned to 2-Byte boundaries.
+![](./img/glyph_table_format.svg)
 
-|Size \[Bytes\]|Value|Description|
-|:--:|:--|:--|
-|1|`entryPoint` &gt;&gt; 1|The value of `entryPoint` divided by 2. `entryPoint` must be a multiple of 2.|
-|1|`packedGlyphDimension`|Dimension of the glyph|
+### `glyphEntry`
 
-#### `packedGlyphDimension`
+#### Small Format
 
-|Bit Range|Value|Description|
-|:--:|:--|:--|
-|7:6|`xNegativeOffset`|See description of Normal Table Entry.|
-|5:4|`xSpacing`|See description of Normal Table Entry.|
-|3:0|`glyphWidth` - 1|See description of Normal Table Entry.|
+|Byte Offset|Bit Range|Value|
+|:--:|:--:|:--|
+|0|7:0|`entryPoint` / 2|
+
+`glyphEntry` = 0xFF (`entryPoint` = 0x1FE) indicates a missing glyph.
+
+#### NormalFormat
+
+|Byte Offset|Bit Range|Value|
+|:--:|:--:|:--|
+|0|7:0|`entryPoint[7:0]`|
+|1|7:6|(Reserved)|
+||5:0|`entryPoint[13:8]`|
+
+`glyphEntry` = 0xFFFF indicates a missing glyph.
+
+#### `entryPoint`
+
+Offset from start of Bytecode Block in bytes.
+
+### `glyphDimension`
+
+#### Small Format
+
+|Byte Offset|Bit Range|Value|
+|:--:|:--:|:--|
+|0|7:6|`xStepBack`|
+||5:4|`xSpacing`|
+||3:0|`glyphWidth` - 1|
+
+#### NormalFormat
+
+|Byte Offset|Bit Range|Value|
+|:--:|:--:|:--|
+|\[0\]|7:6|(Reserved)|
+||5:0|`glyphWidth` - 1|
+|\[1\]|7:5|`xStepBack`|
+||4:0|`xSpacing` + 16||
+
+`glyphWidth` - `xStepBack` + `xSpacing` is same as `xAdvance` of GFXfont. Depending on these values, rendered characters can overlap, but it is up to the renderer implementation to render this as the font designer expected.
+
+#### `glyphWidth`
+
+Glyph width in pixels.
+
+#### `xStepBack`
+
+The glyph is rendered shifted to the left by the number of pixels specified by this value.
+
+#### `xSpacing`
+
+Distance in pixels from the right edge of the current glyph to the left edge of the next glyph.
 
 ### Missing Glyph
 
-To express that no valid glyph is assigned to a character code, the first two bytes of the Glyph Table Entry should be 0xFFFF.
+To express that no valid glyph is assigned to a character code, all bytes of `glyphEntry` should be 0xFF.
 
-This also means:
+How the missing glyph is rendered is up to the renderer implementation.
 
-- If not a Shrinked Glyph Table: `entryPoint`=0xFFFF cannot be used.
-- If a Shrinked Glyph Table: the combination of `entryPoint`=0x1FE, `glyphWidth`=16, `xSpacing`=16 cannot be used.
+## Fragment Table
 
-Be careful as these can lead to corner case issues.
+The Fragment Table provides the fragments of the glyph in bytes.
 
-## Lookup Table
+The same fragment is allowed to appear multiple times in the fragment table.
 
-If the total size does not reach a 2-Byte boundary, a dummy byte must be appended.
-The value of `lutSize` includes this dummy byte.
+If the total size does not reach a 2-Byte boundary, a padding byte must be appended.
+The value of `fragmentTableSize` includes this padding byte.
 
 ## Bytecode Block
 
@@ -152,7 +232,7 @@ The number in parentheses indicates the length of the instruction in bytes.
 |1st.|7:6|0b10|
 ||5:0|`index`|
 
-The state machine simply copies the fragment in the LUT to the glyph buffer. If msb1st=1 is set, the fragments in the LUT must also be MSB 1st.
+The state machine simply copies the fragment in the Fragment Table to the glyph buffer. If msb1st=1 is set, the fragments in the Fragment Table must also be MSB 1st.
 
 ![](./img/inst_lup.svg)
 
@@ -259,9 +339,9 @@ Combination of `maskWidth=2` and `maskPos=7` (0xFF) is reserved for other instru
 |:--:|:--:|:--|
 |1st.|7:0|0xFF|
 
-The decompressor must abort decompression when it encounters an `ABO` instruction.
+The decoder must abort decompression when it encounters an `ABO` instruction.
 
-If safety is a priority, the blob generator can add a `ABO` instruction to the end of the glyph bytecode. This instruction is normally never executed, since decompression finishes as soon as the glyph buffer is filled. However, if the blob or decompressor logic is corrupted, this instruction can stop a runaway decompression process.
+If safety is a priority, the blob generator can add a `ABO` instruction to the end of the glyph bytecode. This instruction is normally never executed, since decompression finishes as soon as the glyph buffer is filled. However, if the blob or decoder logic is corrupted, this instruction can stop a runaway decompression process.
 
 If a Shrinked Glyph Table is applied and the length of the glyph bytecode sequence does not reach a 2-byte boundary, it is recommended that the remaining part be filled with this instruction.
 

@@ -5,7 +5,7 @@
 
 #include "mamec/bitmap_font.hpp"
 #include "mamec/buffer_state.hpp"
-#include "mamec/mame_glyph.hpp"
+#include "mamec/glyph_object.hpp"
 #include "mamec/mamec_common.hpp"
 #include "mamec/operation.hpp"
 #include "mamec/vec_ref.hpp"
@@ -33,10 +33,11 @@ struct TryContext {
 class Encoder {
  public:
   const EncodeOptions options;
-  int fontHeight = 0;
+  int glyphHeight = 0;
   int ySpacing = 0;
-  std::map<int, MameGlyph> glyphs;
-  std::vector<frag_t> lut;
+  std::map<int, GlyphObject> glyphs;
+  std::vector<frag_t> fragTable;
+  std::map<frag_t, int> ldiFrags;
   std::vector<uint8_t> blob;
 
   Encoder(EncodeOptions opts) : options(opts){};
@@ -47,7 +48,7 @@ class Encoder {
   void generateBlob();
 
  private:
-  void generateInitialOperations(MameGlyph &glyph, bool verbose = false,
+  void generateInitialOperations(GlyphObject &glyph, bool verbose = false,
                                  std::string indent = "");
   void tryLUP(TryContext ctx);
   void tryXOR(TryContext ctx);
@@ -59,8 +60,9 @@ class Encoder {
   void tryCPY(TryContext ctx);
   void tryCPX(TryContext ctx);
 
-  void generateInitialFragmentTable();
-  void generateFullFragmentTable();
+  void generateInitialFragTable();
+  void generateFullFragTable();
+  void generateFragTableFromCountMap(std::map<frag_t, int> &countMap, int tableSize);
   void optimizeFragmentTable();
   void fixLUPIndex();
   void replaceLDItoLUP(bool verbose = false, std::string indent = "");

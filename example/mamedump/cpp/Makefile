@@ -23,10 +23,8 @@ MAMEFONT_OBJ_LIST := $(patsubst $(MAMEFONT_SRC_DIR)/%.cpp,$(MAMEFONT_BUILD_DIR)/
 
 FONT_NAME := MameSansP_s48c40w08
 FONT_INC_DIR := ../../../../shapofont/mamefont/cpp/HL/include
-FONT_SRC_DIR := ../../../../shapofont/mamefont/cpp/HL/src
 FONT_BUILD_DIR := $(APP_BUILD_DIR)/font
 FONT_HPP := $(FONT_INC_DIR)/$(FONT_NAME).hpp
-FONT_OBJ := $(FONT_BUILD_DIR)/$(FONT_NAME).o
 
 EXTRA_DEPENDENCIES := \
 	$(APP_HPP_LIST) \
@@ -42,13 +40,13 @@ CXXFLAGS := \
 	-I$(MAMEFONT_INC_DIR) \
 	-I$(FONT_INC_DIR) \
 	-DMAMEFONT_DEBUG \
-	-DTARGET_FONT_NAME=$(FONT_NAME)
+	-DTARGET_BLOB_NAME=$(FONT_NAME)_blob
 
 all: build
 
 build: $(BIN)
 
-$(BIN): $(APP_OBJ_LIST) $(MAMEFONT_OBJ_LIST) $(FONT_OBJ)
+$(BIN): $(APP_OBJ_LIST) $(MAMEFONT_OBJ_LIST)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
@@ -63,10 +61,6 @@ $(APP_TARGET_HPP):
 $(MAMEFONT_BUILD_DIR)/%.o: $(MAMEFONT_SRC_DIR)/%.cpp $(EXTRA_DEPENDENCIES)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@	
-
-$(FONT_BUILD_DIR)/%.o: $(FONT_SRC_DIR)/%.cpp $(EXTRA_DEPENDENCIES)
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 run: $(BIN)
 	./$(BIN)

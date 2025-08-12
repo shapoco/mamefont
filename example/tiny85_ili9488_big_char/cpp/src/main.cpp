@@ -52,15 +52,16 @@ const char* MSG_LINES[] = {
 
 static void drawString(const mf::Font& font, const char* str, coord_t x,
                        coord_t y, uint16_t fgColor, uint16_t bgColor) {
-  mf::GlyphDimensions dims;
+  mf::Glyph glyph;
   int8_t glyphHeight = font.glyphHeight();
   for (const char* c = str; *c; c++) {
-    mf::extractGlyph(font, *c, glyphBuff, &dims);
-    x -= dims.xNegativeOffset;
-    display.drawImage1bpp(glyphBuff.data, MAX_GLYPH_COLS, x, y, dims.width,
-                          glyphHeight, fgColor, bgColor);
-    display.fillRect(x + dims.width, y, dims.xSpacing, glyphHeight, bgColor);
-    x += dims.width + dims.xSpacing;
+    mf::decodeGlyph(font, *c, glyphBuff, &glyph);
+    x -= glyph.xStepBack;
+    display.drawImage1bpp(glyphBuff.data, MAX_GLYPH_COLS, x, y,
+                          glyph.glyphWidth, glyphHeight, fgColor, bgColor);
+    display.fillRect(x + glyph.glyphWidth, y, glyph.xSpacing, glyphHeight,
+                     bgColor);
+    x += glyph.glyphWidth + glyph.xSpacing;
   }
 }
 
@@ -88,6 +89,8 @@ int main() {
   glyphBuff.data = glyphBmpArray;
   glyphBuff.stride = MAX_GLYPH_COLS;
 
+  mf::Font font(MameSansP_s48c40w08_blob);
+
   // Show Message
   for (int8_t i = 0; i < 6; i++) {
     char buff[24];
@@ -98,8 +101,7 @@ int main() {
       *(wp++) = c;
     }
     *wp = '\0';
-    drawString(MameSansP_s48c40w08, buff, 8, 8 + i * 52, Color::BLUE,
-               Color::GREEN);
+    drawString(font, buff, 8, 8 + i * 52, Color::BLUE, Color::GREEN);
   }
 
   while (1) {

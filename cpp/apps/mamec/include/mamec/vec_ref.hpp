@@ -64,9 +64,9 @@ struct VecRef {
   inline std::vector<frag_t> toVector(uint8_t cpxFlag = 0) const {
     std::vector<frag_t> result;
     result.reserve(size);
-    bool byteReverse = mf::CPX_BYTE_REVERSE::read(cpxFlag);
-    bool bitReverse = mf::CPX_BIT_REVERSE::read(cpxFlag);
-    bool inverse = mf::CPX_INVERSE::read(cpxFlag);
+    bool byteReverse = mf::CPX::ByteReverse::read(cpxFlag);
+    bool bitReverse = mf::CPX::BitReverse::read(cpxFlag);
+    bool inverse = mf::CPX::Inverse::read(cpxFlag);
     for (size_t i = 0; i < size; ++i) {
       int iSrc = byteReverse ? (size - 1 - i) : i;
       frag_t frag = (*this)[iSrc];
@@ -86,7 +86,7 @@ static inline bool maskedEqual(const VecRef &a, const VecRef &b,
         ", b.size=" + std::to_string(b.size) +
         ", mask.size=" + std::to_string(mask.size));
   }
-  bool byteReverse = CPX_BYTE_REVERSE::read(cpxFlags);
+  bool byteReverse = CPX::ByteReverse::read(cpxFlags);
   for (size_t i = 0; i < a.size; ++i) {
     int ia = byteReverse ? (a.size - 1 - i) : i;
     if (!maskedEqual(a[ia], b[i], mask[i], cpxFlags)) return false;

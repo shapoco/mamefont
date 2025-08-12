@@ -53,7 +53,7 @@ static inline Operation makeOperation(mf::Operator op,
                                           byte1, byte2);
 }
 
-Operation makeLDI(frag_t frag);
+Operation makeLDI(frag_t frag, int addCost);
 Operation makeXOR(int pos, bool width2bit, frag_t frag);
 Operation makeLUP(int index, frag_t frag);
 Operation makeLUD(int index, int step, frag_t frag1, frag_t frag2);

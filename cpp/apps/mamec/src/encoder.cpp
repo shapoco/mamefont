@@ -8,8 +8,8 @@
 #include "mamec/bitmap_glyph.hpp"
 #include "mamec/buffer_state.hpp"
 #include "mamec/encoder.hpp"
+#include "mamec/glyph_object.hpp"
 #include "mamec/gray_bitmap.hpp"
-#include "mamec/mame_glyph.hpp"
 #include "mamec/state_queue.hpp"
 #include "mamec/vec_ref.hpp"
 
@@ -26,7 +26,7 @@ void Encoder::addFont(const BitmapFont &bmpFont) {
     std::cout << "Adding font: " << bmpFont->familyName.c_str() << std::endl;
   }
 
-  fontHeight = bmpFont->bodySize;
+  glyphHeight = bmpFont->bodySize;
   ySpacing = bmpFont->ySpacing;
   for (const auto &bmpGlyph : bmpFont->glyphs) {
     addGlyph(bmpFont, bmpGlyph);
@@ -36,7 +36,7 @@ void Encoder::addFont(const BitmapFont &bmpFont) {
 void Encoder::addGlyph(const BitmapFont &bmpFont, const BitmapGlyph &bmpGlyph) {
   auto frags = bmpGlyph->bmp->toFragments(options.verticalFrag, options.msb1st);
 
-  MameGlyph existingGlyph = std::make_shared<MameGlyphClass>(
+  GlyphObject existingGlyph = std::make_shared<GlyphObjectClass>(
       bmpGlyph->code, frags, bmpGlyph->width, bmpFont->bodySize,
       options.verticalFrag, options.msb1st,
       bmpFont->defaultXSpacing - bmpGlyph->leftAntiSpace,
@@ -46,11 +46,11 @@ void Encoder::addGlyph(const BitmapFont &bmpFont, const BitmapGlyph &bmpGlyph) {
   // Detect glyph duplication
   for (auto &other : glyphs) {
     int otherCode = other.first;
-    MameGlyph &otherGlyph = other.second;
+    GlyphObject &otherGlyph = other.second;
     if (otherGlyph->fragments == frags) {
       if (options.verbose) {
-        std::cout << "  Glyph duplication found: " << formatChar(bmpGlyph->code)
-                  << " --> " << formatChar(otherCode) << std::endl;
+        std::cout << "  Glyph duplication found: " << c2s(bmpGlyph->code)
+                  << " --> " << c2s(otherCode) << std::endl;
       }
 
       existingGlyph->fragmentsSameAsCode = otherCode;
@@ -65,19 +65,19 @@ void Encoder::encode() {
   if (options.verbose) {
     std::cout << "Generating initial fragment table..." << std::endl;
   }
-  generateInitialFragmentTable();
+  generateInitialFragTable();
   if (options.verbose) {
-    dumpByteArray(lut, "  ");
-    std::cout << "  (" << lut.size() << " entries)" << std::endl;
+    dumpByteArray(fragTable, "  ");
+    std::cout << "  (" << fragTable.size() << " entries)" << std::endl;
   }
 
   if (options.verbose) {
     std::cout << "Encoding glyphs..." << std::endl;
   }
   for (auto &glyphPair : glyphs) {
-    MameGlyph &glyph = glyphPair.second;
+    GlyphObject &glyph = glyphPair.second;
     if (options.verbose) {
-      std::cout << "  Generating operations for " << formatChar(glyph->code)
+      std::cout << "  Generating operations for " << c2s(glyph->code)
                 << std::endl;
     }
     bool v = options.verbose && options.verboseForCode == glyph->code;
@@ -87,58 +87,48 @@ void Encoder::encode() {
   if (options.verbose) {
     std::cout << "Regenerating fragment table..." << std::endl;
   }
-  generateFullFragmentTable();
+  generateFullFragTable();
   if (options.verbose) {
-    dumpByteArray(lut, "  ");
-    std::cout << "  (" << lut.size() << " entries)" << std::endl;
+    dumpByteArray(fragTable, "  ");
+    std::cout << "  (" << fragTable.size() << " entries)" << std::endl;
   }
 
   if (options.verbose) {
-    std::cout << "Optimizing LUT..." << std::endl;
+    std::cout << "Optimizing Fragment Table..." << std::endl;
   }
   optimizeFragmentTable();
   if (options.verbose) {
-    dumpByteArray(lut, "  ");
-    std::cout << "  (" << lut.size() << " entries)" << std::endl;
+    dumpByteArray(fragTable, "  ");
+    std::cout << "  (" << fragTable.size() << " entries)" << std::endl;
   }
 
   if (options.verbose) {
     std::cout << "Replacing LDI with LUP/LUD..." << std::endl;
   }
   replaceLDItoLUP(options.verbose, "  ");
+
+  if (options.verbose) {
+    std::cout << "Encode finished." << std::endl;
+  }
 }
 
-void Encoder::generateInitialFragmentTable() {
+void Encoder::generateInitialFragTable() {
   // count how many times each fragment is used in LDI operations
-  std::map<frag_t, int> lutMap;
+  std::map<frag_t, int> fragCountMap;
   for (const auto &glyphPair : glyphs) {
     for (frag_t frag : glyphPair.second->fragments) {
-      if (lutMap.contains(frag)) {
-        lutMap[frag] += 1;
+      if (fragCountMap.contains(frag)) {
+        fragCountMap[frag] += 1;
       } else {
-        lutMap[frag] = 1;
+        fragCountMap[frag] = 1;
       }
     }
   }
 
-  // Sort the LUT by usage count in descending order
-  std::vector<std::pair<int, frag_t>> sortedLut;
-  for (const auto &kv : lutMap) {
-    sortedLut.push_back({kv.second, kv.first});
-  }
-  std::sort(sortedLut.begin(), sortedLut.end(),
-            [](const auto &a, const auto &b) { return a.first > b.first; });
-
-  // Create the initial LUT
-  int n = 0;
-  lut.clear();
-  for (const auto &kv : sortedLut) {
-    lut.push_back(kv.second);
-    if (++n >= mf::MAX_LUT_SIZE / 2) break;
-  }
+  generateFragTableFromCountMap(fragCountMap, mf::MAX_FRAGMENT_TABLE_SIZE / 2);
 }
 
-void Encoder::generateInitialOperations(MameGlyph &glyph, bool verbose,
+void Encoder::generateInitialOperations(GlyphObject &glyph, bool verbose,
                                         std::string indent) {
   int numFrags = glyph->fragments.size();
 
@@ -155,7 +145,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph, bool verbose,
   int duplicatedCode = -1;
   size_t duplicatedSize = 0;
   for (auto &otherPair : glyphs) {
-    MameGlyph &other = otherPair.second;
+    GlyphObject &other = otherPair.second;
     auto otherSize = other->fragments.size();
     if (other->code == glyph->code) continue;
     if (otherSize < numFrags) {
@@ -179,8 +169,8 @@ void Encoder::generateInitialOperations(MameGlyph &glyph, bool verbose,
     // todo: Enable
     if (verbose) {
       std::cout << indent
-                << "Fragment duplication found: " << formatChar(glyph->code)
-                << " --> " << formatChar(duplicatedCode) << std::endl;
+                << "Fragment duplication found: " << c2s(glyph->code)
+                << " --> " << c2s(duplicatedCode) << std::endl;
     }
     glyph->fragmentsSameAsCode = duplicatedCode;
   }
@@ -234,7 +224,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph, bool verbose,
         throw std::runtime_error(
             std::string("Operation ") + mf::mnemonicOf(opr->op) +
             " generated fragments do not match future fragments for " +
-            formatChar(glyph->code));
+            c2s(glyph->code));
       }
 #endif
 
@@ -252,7 +242,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph, bool verbose,
 
       int nextCost = curr->bestCost + opr->cost;
       int otherCost = scoreBoard[p->pos][p->lastFrag];
-      if (nextCost < p->bestCost && nextCost < otherCost) {
+      if (nextCost < p->bestCost && nextCost <= otherCost) {
         p->bestOpr = opr;
         p->bestPrev = curr;
         waitList.put(p, nextCost);
@@ -285,7 +275,7 @@ void Encoder::generateInitialOperations(MameGlyph &glyph, bool verbose,
 
   if (!goalState) {
     throw std::runtime_error("No solutions found for " +
-                             formatChar(glyph->code));
+                             c2s(glyph->code));
   }
 
   BufferState p = goalState;
@@ -315,14 +305,20 @@ void Encoder::tryLUP(TryContext ctx) {
       if (index >= 0) {
         ctx.oprs.push_back(makeLUP(index, frag));
       } else {
-        ctx.oprs.push_back(makeLDI(frag));
+        if (ldiFrags.contains(frag)) {
+          ldiFrags[frag]++;
+        } else {
+          ldiFrags[frag] = 1;
+        }
+        int addCost = ldiFrags[frag] > 0 ? 1 : 0;
+        ctx.oprs.push_back(makeLDI(frag, addCost));
       }
     }
   }
 }
 
 void Encoder::tryXOR(TryContext ctx) {
-  FOR_FIELD_VALUES(mf::XOR_POS, pos) {
+  FOR_FIELD_VALUES(mf::XOR::Pos, pos) {
     for (bool width2bit : {false, true}) {
       // This combination is reserved for other instruction
       if (width2bit && pos == 7) continue;
@@ -339,14 +335,14 @@ void Encoder::tryXOR(TryContext ctx) {
 }
 
 void Encoder::tryRPT(TryContext ctx) {
-  int rptMax = std::min((size_t)mf::RPT_REPEAT_COUNT::MAX, ctx.future.size);
-  int rptStep = mf::RPT_REPEAT_COUNT::STEP;
+  int rptMax = std::min((size_t)mf::RPT::RepeatCount::MAX, ctx.future.size);
+  int rptStep = mf::RPT::RepeatCount::STEP;
   frag_t lastFrag = ctx.state->lastFrag;
   for (int rpt = 1; rpt <= rptMax; rpt += rptStep) {
     if (!maskedEqual(lastFrag, ctx.future[rpt - 1], ctx.compareMask[rpt - 1])) {
       break;
     }
-    if (rpt >= mf::RPT_REPEAT_COUNT::MIN) {
+    if (rpt >= mf::RPT::RepeatCount::MIN) {
       ctx.oprs.push_back(makeRPT(lastFrag, rpt));
     }
   }
@@ -363,7 +359,7 @@ void Encoder::trySFT(TryContext ctx) {
       // If the last fragment is all zeros or all ones, no shift can change it
       continue;
     }
-    FOR_FIELD_VALUES(mf::SFT_SIZE, size) {
+    FOR_FIELD_VALUES(mf::SFT::Size, size) {
       for (bool right : {false, true}) {
         if (tryShiftCore(ctx, false, right, postSet, false, size, 1)) {
           return;
@@ -374,6 +370,8 @@ void Encoder::trySFT(TryContext ctx) {
 }
 
 void Encoder::trySFI(TryContext ctx) {
+  if (options.noSfi) return;
+
   frag_t last = ctx.state->lastFrag;
   for (bool postSet : {false, true}) {
     if ((last == 0x00 && !postSet) || (last == 0xFF && postSet)) {
@@ -381,7 +379,7 @@ void Encoder::trySFI(TryContext ctx) {
       continue;
     }
     for (bool preShift : {false, true}) {
-      FOR_FIELD_VALUES(mf::SFI_PERIOD, period) {
+      FOR_FIELD_VALUES(mf::SFI::Period, period) {
         for (bool right : {false, true}) {
           if (tryShiftCore(ctx, true, right, postSet, preShift, 1, period)) {
             return;
@@ -394,8 +392,8 @@ void Encoder::trySFI(TryContext ctx) {
 
 bool Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
                            bool preShift, int size, int period) {
-  int rptMin = isSFI ? mf::SFI_REPEAT_COUNT::MIN : mf::SFT_REPEAT_COUNT::MIN;
-  int rptMax = isSFI ? mf::SFI_REPEAT_COUNT::MAX : mf::SFT_REPEAT_COUNT::MAX;
+  int rptMin = isSFI ? mf::SFI::RepeatCount::MIN : mf::SFT::RepeatCount::MIN;
+  int rptMax = isSFI ? mf::SFI::RepeatCount::MAX : mf::SFT::RepeatCount::MAX;
   if (preShift) {
     rptMax = std::min(rptMax, ((int)ctx.future.size - 1) / period);
   } else {
@@ -452,12 +450,12 @@ bool Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
 
 void Encoder::tryCPY(TryContext ctx) {
   std::vector<frag_t> pastBuff;
-  const int pastLen = mf::CPY_LENGTH::MAX + mf::CPY_OFFSET::MAX;
+  const int pastLen = mf::CPY::Length::MAX + mf::CPY::Offset::MAX;
   pastBuff.resize(pastLen);
   ctx.state->copyPastTo(pastBuff, pastLen, pastLen);
-  FOR_FIELD_VALUES(mf::CPY_LENGTH, length) {
+  FOR_FIELD_VALUES(mf::CPY::Length, length) {
     if (length > ctx.future.size) break;
-    FOR_FIELD_VALUES(mf::CPY_OFFSET, offset) {
+    FOR_FIELD_VALUES(mf::CPY::Offset, offset) {
       int iPastFrom = pastBuff.size() - offset - length;
       int iPastTo = iPastFrom + length;
       VecRef pastRef(pastBuff, iPastFrom, iPastTo);
@@ -469,7 +467,7 @@ void Encoder::tryCPY(TryContext ctx) {
         if (!byteReverse && length == 1 && offset == 0) continue;
         if (byteReverse && length == 1) continue;
 
-        uint8_t cpxFlags = mf::CPX_BYTE_REVERSE::place(byteReverse);
+        uint8_t cpxFlags = mf::CPX::ByteReverse::place(byteReverse);
         if (maskedEqual(pastRef, futureRef, maskRef, cpxFlags)) {
           ctx.oprs.push_back(
               makeCPY(offset, length, byteReverse, pastRef.toVector(cpxFlags)));
@@ -486,20 +484,19 @@ void Encoder::tryCPX(TryContext ctx) {
   if (options.noCpx) return;  // Skip CPX if disabled
 
   std::vector<frag_t> pastBuff;
-  const int pastLen = mf::CPX_OFFSET_MAX;
+  const int pastLen = mf::CPX::Offset::MAX;
   pastBuff.resize(pastLen);
   ctx.state->copyPastTo(pastBuff, pastLen, pastLen);
 
-  FOR_FIELD_VALUES(mf::CPX_LENGTH, length) {
+  FOR_FIELD_VALUES(mf::CPX::Length, length) {
     if (length > ctx.future.size) break;
 
     VecRef futureRef = ctx.future.slice(0, length);
     VecRef maskRef = ctx.compareMask.slice(0, length);
 
-    int ofstMin = mf::CPX_OFFSET_MIN;
-    int ofstMax = mf::CPX_OFFSET_MAX;
-    int ofstStep = mf::CPX_OFFSET_STEP;
-    for (int offset = ofstMin; offset <= ofstMax; offset += ofstStep) {
+    bool found = false;
+
+    FOR_FIELD_VALUES(mf::CPX::Offset, offset) {
       int iPastFrom = pastBuff.size() - offset;
       int iPastTo = iPastFrom + length;
       if (iPastTo > pastBuff.size()) continue;
@@ -511,12 +508,13 @@ void Encoder::tryCPX(TryContext ctx) {
         for (bool bitReverse : {false, true}) {
           for (bool inverse : {false, true}) {
             uint8_t cpxFlags = 0;
-            cpxFlags |= mf::CPX_BYTE_REVERSE::place(byteReverse);
-            cpxFlags |= mf::CPX_BIT_REVERSE::place(bitReverse);
-            cpxFlags |= mf::CPX_INVERSE::place(inverse);
+            cpxFlags |= mf::CPX::ByteReverse::place(byteReverse);
+            cpxFlags |= mf::CPX::BitReverse::place(bitReverse);
+            cpxFlags |= mf::CPX::Inverse::place(inverse);
             if (maskedEqual(pastRef, futureRef, maskRef, cpxFlags)) {
               ctx.oprs.push_back(makeCPX(offset, length, cpxFlags,
                                          pastRef.toVector(cpxFlags)));
+              found = true;
               goto nextLength;
             }
           }
@@ -524,7 +522,7 @@ void Encoder::tryCPX(TryContext ctx) {
       }
     }
   nextLength:
-    continue;  // dummy op to suppress warning
+    if (!found) return;
   }
 }
 
@@ -543,52 +541,57 @@ static void dumpSearchTree(const BufferState &state, int *nodeCount, int length,
   }
 }
 
-void Encoder::generateFullFragmentTable() {
+void Encoder::generateFullFragTable() {
   // count how many times each fragment is used in LDI operations
-  std::map<frag_t, int> lutMap;
+  std::map<frag_t, int> fragCountMap;
   for (const auto &glyphPair : glyphs) {
-    const MameGlyph &glyph = glyphPair.second;
+    const GlyphObject &glyph = glyphPair.second;
     for (const auto &opr : glyph->operations) {
       if (opr->op == mf::Operator::LDI || opr->op == mf::Operator::LUP) {
         frag_t frag = opr->output[0];
-        if (lutMap.find(frag) == lutMap.end()) {
-          lutMap[frag] = 1;
+        if (fragCountMap.find(frag) == fragCountMap.end()) {
+          fragCountMap[frag] = 1;
         } else {
-          lutMap[frag] += 1;
+          fragCountMap[frag] += 1;
         }
       }
     }
   }
 
-  // Sort the LUT by usage count in descending order
-  std::vector<std::pair<int, frag_t>> sortedLut;
-  for (const auto &kv : lutMap) {
-    sortedLut.push_back({kv.second, kv.first});
-  }
-  std::sort(sortedLut.begin(), sortedLut.end(),
-            [](const auto &a, const auto &b) { return a.first > b.first; });
-
-  // Generate the full LUT
-  int n = 0;
-  lut.clear();
-  for (const auto &kv : sortedLut) {
-    lut.push_back(kv.second);
-    if (++n >= mf::MAX_LUT_SIZE) break;
-  }
+  generateFragTableFromCountMap(fragCountMap, mf::MAX_FRAGMENT_TABLE_SIZE);
 
   fixLUPIndex();
+}
+
+void Encoder::generateFragTableFromCountMap(std::map<frag_t, int> &countMap,
+                                            int tableSize) {
+  // Sort the Fragment Table by usage count in descending order
+  std::vector<std::pair<int, frag_t>> sortedCount;
+  for (const auto &kv : countMap) {
+    sortedCount.push_back({kv.second, kv.first});
+  }
+  std::sort(sortedCount.begin(), sortedCount.end(),
+            [](const auto &a, const auto &b) { return a.first > b.first; });
+
+  // Generate the Fragment Table
+  int n = 0;
+  fragTable.clear();
+  for (const auto &kv : sortedCount) {
+    fragTable.push_back(kv.second);
+    if (++n >= tableSize) break;
+  }
 }
 
 void Encoder::optimizeFragmentTable() {
   // Detecte frequent sequences of two fragments
   std::map<uint16_t, int> sequenceCountMap;
-  for (auto frag1 : lut) {
-    for (auto frag2 : lut) {
+  for (auto frag1 : fragTable) {
+    for (auto frag2 : fragTable) {
       sequenceCountMap[(frag1 << 8) | frag2] = 0;
     }
   }
   for (const auto &glyphPair : glyphs) {
-    const MameGlyph &glyph = glyphPair.second;
+    const GlyphObject &glyph = glyphPair.second;
     int frag1 = -1;
     for (const auto &opr2 : glyph->operations) {
       int frag2 = -1;
@@ -632,8 +635,8 @@ void Encoder::optimizeFragmentTable() {
         n += seq.size();
         if (seq[0] == frag2) {
           if (n <= numFrozen) {
-            // remove from LUT
-            lut.erase(lut.begin() + frag2index);
+            // remove from Fragment Table
+            fragTable.erase(fragTable.begin() + frag2index);
             seq.insert(seq.begin(), frag1);
             seqSize += 1;
           }
@@ -646,8 +649,8 @@ void Encoder::optimizeFragmentTable() {
         n += seq.size();
         if (seq.back() == frag1) {
           if (n <= numFrozen) {
-            // remove from LUT
-            lut.erase(lut.begin() + frag1index);
+            // remove from Fragment Table
+            fragTable.erase(fragTable.begin() + frag1index);
             seq.push_back(frag2);
             seqSize += 1;
           }
@@ -656,12 +659,12 @@ void Encoder::optimizeFragmentTable() {
       }
     } else if (frag1index >= 0 && frag2index >= 0) {
       if (frag1 == frag2) {
-        lut.erase(lut.begin() + frag1index);
+        fragTable.erase(fragTable.begin() + frag1index);
         sequences.push_back({frag1});
         seqSize += 1;
       } else {
-        lut.erase(lut.begin() + std::max(frag1index, frag2index));
-        lut.erase(lut.begin() + std::min(frag1index, frag2index));
+        fragTable.erase(fragTable.begin() + std::max(frag1index, frag2index));
+        fragTable.erase(fragTable.begin() + std::min(frag1index, frag2index));
         sequences.push_back({frag1, frag2});
         seqSize += 2;
       }
@@ -698,17 +701,17 @@ void Encoder::optimizeFragmentTable() {
       }
     }
 
-    if (!headFrozen && seqSize >= mf::LUD_INDEX::MAX) {
+    if (!headFrozen && seqSize >= mf::LUD::Index::MAX) {
       headFrozen = true;
     }
   }
 
-  std::vector<frag_t> newLut;
+  std::vector<frag_t> newTable;
   for (const auto &seq : sequences) {
-    newLut.insert(newLut.end(), seq.begin(), seq.end());
+    newTable.insert(newTable.end(), seq.begin(), seq.end());
   }
-  newLut.insert(newLut.end(), lut.begin(), lut.end());
-  lut = std::move(newLut);
+  newTable.insert(newTable.end(), fragTable.begin(), fragTable.end());
+  fragTable = std::move(newTable);
 
   fixLUPIndex();
 }
@@ -716,7 +719,7 @@ void Encoder::optimizeFragmentTable() {
 void Encoder::fixLUPIndex() {
   // fix existing LUP operations
   for (auto &glyphPair : glyphs) {
-    MameGlyph &glyph = glyphPair.second;
+    GlyphObject &glyph = glyphPair.second;
     for (int i = 0; i < glyph->operations.size(); i++) {
       auto &opr = glyph->operations[i];
       if (opr->op == mf::Operator::LUP) {
@@ -724,9 +727,9 @@ void Encoder::fixLUPIndex() {
         if (newIndex >= 0) {
           glyph->operations[i] = makeLUP(newIndex, opr->output[0]);
         } else {
-          glyph->operations[i] = makeLDI(opr->output[0]);
+          glyph->operations[i] = makeLDI(opr->output[0], 0);
           std::cerr << "  *WARNING: LUP unexpectedly replaced with LDI for "
-                    << formatChar(glyph->code) << ", since fragment 0x"
+                    << c2s(glyph->code) << ", since fragment 0x"
                     << byteToHexStr(opr->output[0])
                     << " not found in fragment table." << std::endl;
         }
@@ -738,7 +741,7 @@ void Encoder::fixLUPIndex() {
 void Encoder::replaceLDItoLUP(bool verbose, std::string indent) {
   int numReplacedOps = 0;
   for (auto &glyphPair : glyphs) {
-    MameGlyph &glyph = glyphPair.second;
+    GlyphObject &glyph = glyphPair.second;
 
     // replace single output instructions with LUP as possible
     for (int i = 0; i < glyph->operations.size(); i++) {
@@ -760,16 +763,16 @@ void Encoder::replaceLDItoLUP(bool verbose, std::string indent) {
       int index2 = -1;
       frag_t frag2 = 0x00;
       if (opr->op == mf::Operator::LUP) {
-        index2 = mf::LUP_INDEX::read(opr->code[0]);
+        index2 = mf::LUP::Index::read(opr->code[0]);
         frag2 = opr->output[0];
       }
-      if (index1 >= 0 && index2 >= 0 && index1 <= mf::LUD_INDEX::MAX &&
+      if (index1 >= 0 && index2 >= 0 && index1 <= mf::LUD::Index::MAX &&
           (index1 == index2 || index1 + 1 == index2)) {
         int step = index2 - index1;
         glyph->operations[i - 1] = makeLUD(index1, step, frag1, frag2);
         glyph->operations.erase(glyph->operations.begin() + i);
-        i--;  // Adjust index after removal
-        index2 = -1;  // Reset index2 to avoid double replacement
+        i--;           // Adjust index after removal
+        index2 = -1;   // Reset index2 to avoid double replacement
         frag2 = 0x00;  // Reset frag2 to avoid double replacement
         numReplacedOps++;
       }
@@ -786,9 +789,9 @@ void Encoder::replaceLDItoLUP(bool verbose, std::string indent) {
 }
 
 int Encoder::reverseLookup(frag_t frag) {
-  int n = lut.size();
+  int n = fragTable.size();
   for (int j = 0; j < n; j++) {
-    if (lut[j] == frag) {
+    if (fragTable[j] == frag) {
       return j;
     }
   }
@@ -800,13 +803,80 @@ void Encoder::generateBlob() {
     std::cout << "Generating blob..." << std::endl;
   }
 
-  bool shrinkedGlyphTable = false;
+  // Determine format of Glyph Table
+  std::map<std::string, bool> largeFontReasons;
+  std::map<std::string, bool> proportionalReasons;
+  int lastWidth = -1;
+  int lastXSpacing = -1;
+  int nextEntryPoint = 0;
+  for (const auto &glyphPair : glyphs) {
+    const GlyphObject &glyph = glyphPair.second;
 
+    // Check glyph dimensions
+    if (!mf::SmallGlyphDimension::GlyphWidth::inRange(glyph->width)) {
+      largeFontReasons["glyphWidth"] = true;
+    }
+    if (!mf::SmallGlyphDimension::XSpacing::inRange(glyph->xSpacing)) {
+      largeFontReasons["xSpacing"] = true;
+    }
+    if (!mf::SmallGlyphDimension::XStepBack::inRange(glyph->xStepBack)) {
+      largeFontReasons["xStepBack"] = true;
+    }
+    if (lastWidth >= 0 && lastWidth != glyph->width) {
+      proportionalReasons["glyphWidth"] = true;
+    }
+    if (lastXSpacing >= 0 && lastXSpacing != glyph->xSpacing) {
+      proportionalReasons["xSpacing"] = true;
+    }
+    if (glyph->xStepBack != 0) {
+      proportionalReasons["xStepBack"] = true;
+    }
+
+    // Check entry point
+    if (glyph->fragmentsSameAsCode < 0) {
+      if (nextEntryPoint >= mf::SmallGlyphEntry::EntryPoint::MAX) {
+        largeFontReasons["entryPoint"] = true;
+      }
+      for (const auto &opr : glyph->operations) {
+        nextEntryPoint += opr->codeLength;
+      }
+      while (nextEntryPoint % 2 != 0) {
+        nextEntryPoint++;
+      }
+    }
+
+    lastWidth = glyph->width;
+    lastXSpacing = glyph->xSpacing;
+  }
+
+  bool largeFont = largeFontReasons.size() > 0;
+  bool proportional = proportionalReasons.size() > 0;
+  if (options.verbose) {
+    if (largeFont) {
+      std::cout << "  Normal Glyph Table Format applied due to:" << std::endl;
+      for (const auto &reason : largeFontReasons) {
+        std::cout << "    - " << reason.first << std::endl;
+      }
+    } else {
+      std::cout << "  Small Glyph Table Format applied." << std::endl;
+    }
+    if (proportional) {
+      std::cout << "  Proportional Glyph Table Format applied due to:"
+                << std::endl;
+      for (const auto &reason : proportionalReasons) {
+        std::cout << "    - " << reason.first << std::endl;
+      }
+    } else {
+      std::cout << "  Monospaced Glyph Table Format applied." << std::endl;
+    }
+  }
+
+  // Construct bytecode block
   std::vector<uint8_t> bytecodes;
   for (const auto &glyphPair : glyphs) {
-    const MameGlyph &glyph = glyphPair.second;
+    const GlyphObject &glyph = glyphPair.second;
     if (glyph->fragmentsSameAsCode >= 0) {
-      const MameGlyph &dupGlyph = glyphs[glyph->fragmentsSameAsCode];
+      const GlyphObject &dupGlyph = glyphs[glyph->fragmentsSameAsCode];
       glyph->entryPoint = dupGlyph->entryPoint;
       glyph->byteCodeSize = dupGlyph->byteCodeSize;
       continue;
@@ -815,7 +885,7 @@ void Encoder::generateBlob() {
     for (const auto &opr : glyph->operations) {
       opr->writeCodeTo(bytecodes);
     }
-    if (shrinkedGlyphTable) {
+    if (!largeFont) {
       while (bytecodes.size() % 2 != 0) {
         bytecodes.push_back(mf::baseCodeOf(mf::Operator::ABO));
       }
@@ -823,18 +893,21 @@ void Encoder::generateBlob() {
     glyph->byteCodeSize = bytecodes.size() - glyph->entryPoint;
 
     if (options.verbose && options.verboseForCode == glyph->code) {
-      std::cout << "  Bytecode generated for glyph " << formatChar(glyph->code)
+      std::cout << "  Bytecode generated for glyph " << c2s(glyph->code)
                 << ":" << std::endl
                 << "    Entry Point: " << glyph->entryPoint << std::endl;
       glyph->report("    ");
     }
   }
 
-  if (lut.size() % 2 != 0) {
-    if (options.verbose) {
-      std::cout << "  LUT size is odd, adding a dummy entry." << std::endl;
-    }
-    lut.push_back(0x00);
+  bool dummyFragmentInserted = false;
+  while (fragTable.size() == 0 || fragTable.size() % 2 != 0) {
+    fragTable.push_back(0x00);
+    dummyFragmentInserted = true;
+  }
+  if (options.verbose && dummyFragmentInserted) {
+    std::cout << "  Fragment Table size is odd or zero, adding a dummy entry."
+              << std::endl;
   }
 
   std::vector<int> codes;
@@ -848,7 +921,7 @@ void Encoder::generateBlob() {
 
   int maxGlyphWidth = 1;
   for (const auto &glyphPair : glyphs) {
-    const MameGlyph &glyph = glyphPair.second;
+    const GlyphObject &glyph = glyphPair.second;
     if (glyph->width > maxGlyphWidth) {
       maxGlyphWidth = glyph->width;
     }
@@ -857,65 +930,120 @@ void Encoder::generateBlob() {
   uint8_t version = 1;
 
   uint8_t fontFlags = 0;
-  fontFlags |= mf::FONT_FLAG_VERTICAL_FRAGMENT::place(options.verticalFrag);
-  fontFlags |= mf::FONT_FLAG_MSB1ST::place(options.msb1st);
-  fontFlags |= mf::FONT_FLAG_SHRINKED_GLYPH_TABLE::place(shrinkedGlyphTable);
+  fontFlags |= mf::FontFlags::VerticalFragment::place(options.verticalFrag);
+  fontFlags |= mf::FontFlags::Msb1st::place(options.msb1st);
+  fontFlags |= mf::FontFlags::LargeFont::place(largeFont);
+  fontFlags |= mf::FontFlags::Proportional::place(proportional);
 
-  uint8_t fontDimension0 = mf::FONT_DIM_FONT_HEIGHT::place(fontHeight);
-  uint8_t fontDimension1 = mf::FONT_DIM_Y_SPACING::place(ySpacing);
-  uint8_t fontDimension2 = mf::FONT_DIM_MAX_GLYPH_WIDTH::place(maxGlyphWidth);
+  blob.clear();
 
   // Font Header
-  blob.clear();
-  blob.push_back(version);
-  blob.push_back(fontFlags);
-  blob.push_back(firstCode);
-  blob.push_back(lastCode - firstCode);
-  blob.push_back(lut.size() - 1);
-  blob.push_back(fontDimension0);
-  blob.push_back(fontDimension1);
-  blob.push_back(fontDimension2);
+  {
+    uint8_t header[8] = {0};
+    uint8_t *ptr = header;
+    mf::FontHeader::FormatVersion::write(ptr, version, "formatVersion");
+    mf::FontHeader::Flags::write(ptr, fontFlags, "fontFlags");
+    mf::FontHeader::FirstCode::write(ptr, firstCode, "firstCode");
+    mf::FontHeader::LastCode::write(ptr, lastCode, "lastCode");
+    mf::FontHeader::FragmentTableSize::write(ptr, fragTable.size(),
+                                             "fragmentTableSize");
+    mf::FontHeader::MaxGlyphWidth::write(ptr, maxGlyphWidth, "maxGlyphWidth");
+    mf::FontHeader::GlyphHeight::write(ptr, glyphHeight, "glyphHeight");
+    mf::FontHeader::XMonoSpacing::write(ptr, 0, "xMonoSpacing");
+    mf::FontHeader::YSpacing::write(ptr, ySpacing, "ySpacing");
+
+    blob.insert(blob.end(), header, header + sizeof(header));
+  }
+
+  if (options.verbose) {
+    std::cout << "  Font header generated:" << std::endl;
+    dumpByteArray(blob, "    ");
+#if 0
+    mf::FontHeader header(blob.data());
+    header.dumpHeader("    ");
+#endif
+  }
 
   // Glyph Table
+  int glyphTableOffset = blob.size();
+  int entrySize = 1;
+  if (largeFont) entrySize *= 2;
+  if (proportional) entrySize *= 2;
+  if (options.verbose) {
+    std::cout << "  Glyph entry size: " << entrySize << " bytes/glyph"
+              << std::endl;
+  }
   for (int code = firstCode; code <= lastCode; code++) {
-    auto it = glyphs.find(code);
-    if (it == glyphs.end() || it->second->width == 0) {
-      // Dummy Entry for missing glyphs
-      if (shrinkedGlyphTable) {
-        blob.push_back(0xFF);
-        blob.push_back(0xFF);
-      } else {
-        blob.push_back(0xFF);
-        blob.push_back(0xFF);
-        blob.push_back(0xFF);
-        blob.push_back(0xFF);
+    // Allocate space for the glyph entry
+    const auto it = glyphs.find(code);
+    bool missing = it == glyphs.end();
+    bool empty = !missing && it->second->width == 0;
+    if (missing || empty) {
+      if (options.verbose) {
+        if (missing) {
+          std::cout << "  Glyph " << c2s(code) << " is missing."
+                    << std::endl;
+        } else if (empty) {
+          std::cout << "  Glyph " << c2s(code) << " is empty, skipping."
+                    << std::endl;
+        }
       }
+      for (int i = 0; i < entrySize; i++) {
+        blob.push_back(0xFF);  // Fill with dummy data
+      }
+      continue;
+    }
+
+    const GlyphObject &glyph = it->second;
+    uint8_t entryBuff[entrySize] = {0};
+    uint8_t *ptr = entryBuff;
+
+    if (largeFont) {
+      mf::NormalGlyphEntry::EntryPoint::write(ptr, glyph->entryPoint,
+                                              "entryPoint");
+      ptr += mf::NormalGlyphEntry::SIZE;
     } else {
-      const MameGlyph &glyph = it->second;
-      if (shrinkedGlyphTable) {
-        uint8_t glyphDim = 0;
-        glyphDim |= mf::GLYPH_SHRINKED_DIM_WIDTH::place(glyph->width);
-        glyphDim |= mf::GLYPH_SHRINKED_DIM_X_SPACING::place(glyph->xSpacing);
-        glyphDim |= mf::GLYPH_SHRINKED_DIM_X_NEGATIVE_OFFSET::place(
-            glyph->xNegativeOffset);
-        blob.push_back(glyph->entryPoint / 2);
-        blob.push_back(glyphDim);
-      } else {
-        uint8_t glyphDim0 = 0;
-        glyphDim0 |= mf::GLYPH_DIM_WIDTH::place(glyph->width);
-        uint8_t glyphDim1 = 0;
-        glyphDim1 |= mf::GLYPH_DIM_X_SPACING::place(glyph->xSpacing);
-        glyphDim1 |=
-            mf::GLYPH_DIM_X_NEGATIVE_OFFSET::place(glyph->xNegativeOffset);
-        blob.push_back(glyph->entryPoint & 0xFF);
-        blob.push_back(glyph->entryPoint >> 8);
-        blob.push_back(glyphDim0);
-        blob.push_back(glyphDim1);
-      }
+      mf::SmallGlyphEntry::EntryPoint::write(ptr, glyph->entryPoint,
+                                             "entryPoint");
+      ptr += mf::SmallGlyphEntry::SIZE;
+    }
+
+    if (largeFont) {
+      mf::NormalGlyphDimension::GlyphWidth::write(ptr, glyph->width,
+                                                  "glyphWidth");
+      mf::NormalGlyphDimension::XSpacing::write(ptr, glyph->xSpacing,
+                                                "xSpacing");
+      mf::NormalGlyphDimension::XStepBack::write(ptr, glyph->xStepBack,
+                                                 "xStepBack");
+    } else {
+      mf::SmallGlyphDimension::GlyphWidth::write(ptr, glyph->width,
+                                                 "glyphWidth");
+      mf::SmallGlyphDimension::XSpacing::write(ptr, glyph->xSpacing,
+                                               "xSpacing");
+      mf::SmallGlyphDimension::XStepBack::write(ptr, glyph->xStepBack,
+                                                "xStepBack");
+    }
+
+    // append to blob
+    blob.insert(blob.end(), entryBuff, entryBuff + entrySize);
+  }
+
+  if (blob.size() % 2 != 0) {
+    blob.push_back(0xFF);
+    if (options.verbose) {
+      std::cout << "  Glyph table size is odd, adding a dummy byte."
+                << std::endl;
     }
   }
 
-  blob.insert(blob.end(), lut.begin(), lut.end());
+  int glyphTableSize = blob.size() - glyphTableOffset;
+  if (options.verbose) {
+    std::cout << "  Glyph table generated, size: " << glyphTableSize << " bytes"
+              << std::endl;
+    dumpByteArray(blob, "    ", glyphTableOffset, glyphTableSize);
+  }
+
+  blob.insert(blob.end(), fragTable.begin(), fragTable.end());
 
   blob.insert(blob.end(), bytecodes.begin(), bytecodes.end());
 

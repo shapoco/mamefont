@@ -1,4 +1,4 @@
-.PHONY: all build flash clean
+.PHONY: all build font flash clean
 
 APP_NAME := tiny402_ssd1306_scroll
 
@@ -14,10 +14,16 @@ F_CPU := 20000000
 CXX := $(AVR_GCC_PATH)/bin/avr-g++
 OBJCOPY := $(AVR_GCC_PATH)/bin/avr-objcopy
 AVR_SIZE := $(AVR_GCC_PATH)/bin/avr-size
+MAMEC := $(REPO_DIR)/bin/mamec
 
-HPP_LIST := $(wildcard $(INC_DIR)/*.hpp)
-CPP_LIST := $(wildcard $(SRC_DIR)/*.cpp)
-OBJ_LIST := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(CPP_LIST)) 
+FONT_BMP_DIR := bmp/font
+FONT_INC_DIR := include/font
+FONT_BMP_LIST := $(wildcard $(FONT_BMP_DIR)/*/design.png)
+FONT_HPP_LIST := $(patsubst $(FONT_BMP_DIR)/%/design.png,$(FONT_INC_DIR)/%.hpp,$(FONT_BMP_LIST))
+
+APP_HPP_LIST := $(wildcard $(INC_DIR)/*.hpp) $(FONT_HPP_LIST)
+APP_CPP_LIST := $(wildcard $(SRC_DIR)/*.cpp)
+APP_OBJ_LIST := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(APP_CPP_LIST)) 
 
 MAMEFONT_INC_DIR := $(REPO_DIR)/cpp/include
 MAMEFONT_SRC_DIR := $(REPO_DIR)/cpp/src
@@ -35,7 +41,9 @@ CXXFLAGS := \
 	-DF_CPU=$(F_CPU) \
 	-DMAMEFONT_VERTICAL_FRAGMENT_ONLY \
 	-DMAMEFONT_FRAGMENT_INDEX_8BIT \
+	-DMAMEFONT_PROPORTIONAL_ONLY \
 	-DMAMEFONT_NO_CPX \
+	-DMAMEFONT_NO_SFI \
 	-I$(INC_DIR) \
 	-I$(MAMEFONT_INC_DIR)
 
@@ -44,32 +52,37 @@ LDFLAGS := \
 	-mmcu=$(MCU)
 
 EXTRA_DEPENDENCIES := \
-	$(HPP_LIST) \
-	$(MAMEFONT_HPP_LIST) \
 	Makefile
 
 all: build
 
 build: $(HEX)
 
+font: $(FONT_HPP_LIST)
+
 $(HEX): $(ELF) $(EXTRA_DEPENDENCIES)
 	$(OBJCOPY) -j .text -j .data -j .rodata -O ihex $< $@
 
-$(ELF): $(OBJ_LIST) $(MAMEFONT_OBJ_LIST) $(EXTRA_DEPENDENCIES)
-	$(CXX) $(LDFLAGS) -o $@ $(OBJ_LIST) $(MAMEFONT_OBJ_LIST) $(FONT_OBJ_LIST)
+$(ELF): $(APP_OBJ_LIST) $(MAMEFONT_OBJ_LIST) $(EXTRA_DEPENDENCIES)
+	$(CXX) $(LDFLAGS) -o $@ $(APP_OBJ_LIST) $(MAMEFONT_OBJ_LIST) $(FONT_OBJ_LIST)
 	$(AVR_SIZE) $(ELF)
 
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp $(EXTRA_DEPENDENCIES)
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp $(APP_HPP_LIST) $(EXTRA_DEPENDENCIES)
 	@mkdir -p $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(MAMEFONT_BUILD_DIR)/%.o: $(MAMEFONT_SRC_DIR)/%.cpp $(EXTRA_DEPENDENCIES)
+$(MAMEFONT_BUILD_DIR)/%.o: $(MAMEFONT_SRC_DIR)/%.cpp $(MAMEFONT_HPP_LIST) $(EXTRA_DEPENDENCIES)
 	@mkdir -p $(MAMEFONT_BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# $(FONT_BUILD_DIR)/%.o: $(FONT_SRC_DIR)/%.cpp $(EXTRA_DEPENDENCIES)
-# 	@mkdir -p $(FONT_BUILD_DIR)
-# 	$(CXX) $(CXXFLAGS) -c $< -o $@
+$(FONT_INC_DIR)/%.hpp: $(FONT_BMP_DIR)/%/design.png $(FONT_BMP_DIR)/%/design.json $(EXTRA_DEPENDENCIES)
+	@mkdir -p $(dir $@)
+	$(MAMEC) \
+		-e VL \
+		-i $< \
+		-o $@ \
+		--no_cpx \
+		--no_sfi
 
 include $(TOOLS_DIR)/avrdude_wsl/tools.mk
 

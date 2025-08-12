@@ -1,28 +1,20 @@
-#include <mamefont/mamefont.hpp>
+#include "mamefont/mamefont.hpp"
 
 namespace mamefont {
 
-Status extractGlyph(const Font &font, uint8_t c, const GlyphBuffer &buff,
-                    GlyphDimensions *dims
 #ifdef MAMEFONT_DEBUG
-                    ,
-                    bool verbose
+bool verbose = false;
 #endif
-) {
-  Glyph glyph;
-  Status status = font.getGlyph(c, &glyph);
+
+Status decodeGlyph(const Font &font, uint8_t c, const GlyphBuffer &buff,
+                   Glyph *glyph) {
+  Status status = font.getGlyph(c, glyph);
   if (status != Status::SUCCESS) return status;
 
-  if (!glyph.isValid()) return Status::GLYPH_NOT_DEFINED;
-
-  if (dims) glyph.getDimensions(dims);
+  if (!glyph->isValid()) return Status::GLYPH_NOT_DEFINED;
 
   StateMachine stm(font);
-  return stm.run(glyph, buff
-#ifdef MAMEFONT_DEBUG
-  , verbose
-#endif
-  );
+  return stm.run(*glyph, buff);
 }
 
 #ifdef MAMEFONT_DEBUG
@@ -39,6 +31,7 @@ const char *mnemonicOf(Operator op) {
     case Operator::LUD:  return "LUD";
     case Operator::LDI:  return "LDI";
     case Operator::CPX:  return "CPX";
+    case Operator::ABO:  return "ABO";
     default:             return "(Unknown)";
   }
   // clang-format on

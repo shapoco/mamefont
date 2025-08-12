@@ -2,8 +2,8 @@
 #include <stdint.h>
 
 #include <mamefont/mamefont.hpp>
-#include <shapofont/ShapoSansDigitP_s16c14w02.hpp>
-#include <shapofont/ShapoSansP_s12c09a01w02.hpp>
+#include <font/ShapoSansDigitP_s16c14w02.hpp>
+#include <font/ShapoSansP_s12c09a01w02.hpp>
 #include <tiny402/i2c.hpp>
 #include <tiny402/ssd1306.hpp>
 
@@ -23,15 +23,15 @@ mf::GlyphBuffer glyphBuff;
 
 static void drawString(const mf::Font& font, const char* str, int16_t x,
                        int8_t row) {
-  mf::GlyphDimensions dims;
+  mf::Glyph glyph;
   int8_t rows = (font.glyphHeight() + 7) / 8;
   for (const char* c = str; *c; c++) {
-    mf::extractGlyph(font, *c, glyphBuff, &dims);
-    x -= dims.xNegativeOffset;
-    display.drawImage(glyphBuff.data, x, row, MAX_GLYPH_WIDTH, dims.width,
+    mf::decodeGlyph(font, *c, glyphBuff, &glyph);
+    x -= glyph.xStepBack;
+    display.drawImage(glyphBuff.data, x, row, MAX_GLYPH_WIDTH, glyph.glyphWidth,
                       rows);
-    display.fillRect(x + dims.width, row, dims.xSpacing, rows, 0x00);
-    x += dims.width + dims.xSpacing;
+    display.fillRect(x + glyph.glyphWidth, row, glyph.xSpacing, rows, 0x00);
+    x += glyph.glyphWidth + glyph.xSpacing;
   }
 }
 
@@ -73,15 +73,21 @@ int main() {
 
   // Animation
   while (1) {
-    drawString(ShapoSansP_s12c09a01w02, text1, x1, 0);
-    x1 -= 1;
-    if (x1 < -300) x1 = DISP_W;
+    {
+      mf::Font font(ShapoSansP_s12c09a01w02_blob);
+      drawString(font, text1, x1, 0);
+      x1 -= 1;
+      if (x1 < -300) x1 = DISP_W;
 
-    drawString(ShapoSansP_s12c09a01w02, text2, x2, 2);
-    x2 -= 1;
-    if (x2 < -300) x2 = DISP_W;
+      drawString(font, text2, x2, 2);
+      x2 -= 1;
+      if (x2 < -300) x2 = DISP_W;
+    }
 
-    drawNumber(ShapoSansDigitP_s16c14w02, number++, 0, 5);
+    {
+      mf::Font font(ShapoSansDigitP_s16c14w02_blob);
+      drawNumber(font, number++, 0, 5);
+    }
     _delay_ms(1);
   }
 }

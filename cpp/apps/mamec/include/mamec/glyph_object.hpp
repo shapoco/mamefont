@@ -6,11 +6,11 @@
 
 namespace mamefont::mamec {
 
-class MameGlyphClass;
+class GlyphObjectClass;
 
-using MameGlyph = std::shared_ptr<MameGlyphClass>;
+using GlyphObject = std::shared_ptr<GlyphObjectClass>;
 
-class MameGlyphClass {
+class GlyphObjectClass {
  public:
   int code;
   std::vector<frag_t> fragments;
@@ -19,14 +19,14 @@ class MameGlyphClass {
   int width = 0;
   int height = 0;
   int xSpacing = 0;
-  int xNegativeOffset = 0;
+  int xStepBack = 0;
 
   std::vector<Operation> operations;
   int fragmentsSameAsCode = -1;
-  uint16_t entryPoint = mf::ENTRYPOINT_DUMMY;
+  uint16_t entryPoint = mf::DUMMY_ENTRY_POINT;
   int byteCodeSize = 0;
 
-  MameGlyphClass(int code, std::vector<frag_t> frags, int width, int height,
+  GlyphObjectClass(int code, std::vector<frag_t> frags, int width, int height,
                  bool vertFrag, bool msb1st, int xSpacing, int xNegOffset)
       : code(code),
         fragments(frags),
@@ -35,7 +35,7 @@ class MameGlyphClass {
         verticalFragment(vertFrag),
         msb1st(msb1st),
         xSpacing(xSpacing),
-        xNegativeOffset(xNegOffset) {}
+        xStepBack(xNegOffset) {}
 
   inline int numLanes() const {
     return ((verticalFragment ? height : width) + 7) / 8;

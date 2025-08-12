@@ -5,6 +5,7 @@ build/
 bin/
 a.out
 *.o
+*.log
 settings.json
 
 # todo: delete

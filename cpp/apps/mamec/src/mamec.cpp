@@ -1,4 +1,5 @@
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -16,6 +17,7 @@ using namespace mamefont::mamec;
 static constexpr char OPT_INPUT = 'i';
 static constexpr char OPT_OUTPUT = 'o';
 static constexpr char OPT_ENCODING = 'e';
+static constexpr char OPT_VERIFY_ONLY = 'v';
 static constexpr char OPT_NO_CPX = 0x82;
 static constexpr char OPT_NO_SFI = 0x83;
 static constexpr char OPT_FORCE_ZERO_PADDING = 0x84;
@@ -25,6 +27,7 @@ static struct option long_opts[] = {
     {"input", required_argument, 0, OPT_INPUT},
     {"output", required_argument, 0, OPT_OUTPUT},
     {"encoding", required_argument, 0, OPT_ENCODING},
+    {"verify_only", no_argument, 0, OPT_VERIFY_ONLY},
     {"no_cpx", no_argument, 0, OPT_NO_CPX},
     {"no_sfi", no_argument, 0, OPT_NO_SFI},
     {"force_zero_padding", no_argument, 0, OPT_FORCE_ZERO_PADDING},
@@ -40,12 +43,13 @@ int main(int argc, char *argv[]) {
   bool argNoSFI = false;
   bool argForceZeroPadding = false;
   bool argVerbose = false;
+  bool argVerifyOnly = false;
   std::string argVerboseForCodeStr;
   int argVerboseForCode = -1;
 
   char short_opts[256];
-  snprintf(short_opts, sizeof(short_opts), "%c:%c:%c:", OPT_INPUT, OPT_OUTPUT,
-           OPT_ENCODING);
+  snprintf(short_opts, sizeof(short_opts), "%c:%c:%c:%c", OPT_INPUT, OPT_OUTPUT,
+           OPT_ENCODING, OPT_VERIFY_ONLY);
 
   int opt;
   while ((opt = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
@@ -68,6 +72,9 @@ int main(int argc, char *argv[]) {
       case OPT_FORCE_ZERO_PADDING:
         argForceZeroPadding = true;
         break;
+      case OPT_VERIFY_ONLY:
+        argVerifyOnly = true;
+        break;
       case OPT_VERBOSE:
         argVerbose = true;
         argVerboseForCodeStr = optarg ? optarg : "";
@@ -79,7 +86,6 @@ int main(int argc, char *argv[]) {
 
   if (argVerbose && !argVerboseForCodeStr.empty()) {
     if (argVerboseForCodeStr.find("0x") == 0) {
-      // 0x で始まる場合
       try {
         argVerboseForCode = std::stoi(argVerboseForCodeStr, nullptr, 16);
       } catch (const std::exception &e) {
@@ -87,7 +93,6 @@ int main(int argc, char *argv[]) {
                   << std::endl;
       }
     } else {
-      // それ以外は1文字として解釈
       if (argVerboseForCodeStr.length() == 1) {
         argVerboseForCode = argVerboseForCodeStr[0];
       } else {
@@ -129,31 +134,88 @@ int main(int argc, char *argv[]) {
     std::cout << "  No SFI  : " << (argNoSFI ? "true" : "false") << std::endl;
   }
 
-  if (options.verbose) {
-    std::cout << "Loading font from " << argInput.c_str() << "...\n";
+  FileType outputFileType = FileType::NONE;
+  if (argVerifyOnly) {
+    if (!argOutput.empty()) {
+      std::cerr << "*ERROR: Output file cannot be specified in verify mode."
+                << std::endl;
+    }
+  } else {
+    if (argOutput.empty()) {
+      std::cerr << "*ERROR: Output file must be specified." << std::endl;
+      return 1;
+    } else if (argOutput.ends_with(".json")) {
+      outputFileType = FileType::MAME_JSON;
+    } else if (argOutput.ends_with(".hpp")) {
+      outputFileType = FileType::MAME_HPP;
+    } else {
+      std::cerr << "*ERROR: Unknown output file extension." << std::endl;
+      return 1;
+    }
   }
 
-  BitmapFont bmpFont = std::make_shared<BitmapFontClass>(argInput);
-
-  if (options.verbose) {
-    std::cout << "  Font family       : " << bmpFont->familyName.c_str()
+  if (argInput == argOutput) {
+    std::cerr << "*ERROR: Input and output files cannot be the same."
               << std::endl;
-    std::cout << "  Body size         : " << bmpFont->bodySize << std::endl;
-    std::cout << "  Cap height        : " << bmpFont->capHeight << std::endl;
-    std::cout << "  Ascender spacing  : " << bmpFont->ascenderSpacing
-              << std::endl;
-    std::cout << "  Weight            : " << bmpFont->weight << std::endl;
-    std::cout << "  Default X spacing : " << bmpFont->defaultXSpacing
-              << std::endl;
-    std::cout << "  Y spacing         : " << bmpFont->ySpacing << std::endl;
+    return 1;
   }
 
-  Encoder encoder(options);
-  encoder.addFont(bmpFont);
-  encoder.encode();
-  encoder.generateBlob();
+  std::string fontName;
+  std::vector<uint8_t> blob;
+  std::shared_ptr<mf::Font> mameFont = nullptr;
+  BitmapFont bmpFont = nullptr;
 
-  mf::Font mameFont(encoder.blob.data());
-  bool success = verifyGlyphs(bmpFont, mameFont, options.verbose, options.verboseForCode);
+  bool success = true;
+  try {
+    if (options.verbose) {
+      std::cout << "Loading font from " << argInput.c_str() << "...\n";
+    }
+
+    if (argInput.ends_with(".bmp") || argInput.ends_with(".png") ||
+        argInput.ends_with(".jpg") || argInput.ends_with(".jpeg")) {
+      bmpFont = std::make_shared<BitmapFontClass>(argInput);
+      fontName = importBitmapFont(bmpFont, blob, options);
+    } else if (argInput.ends_with(".json")) {
+      std::ifstream ifs(argInput);
+      if (!ifs.is_open()) {
+        throw std::runtime_error("Failed to open input file: " + argInput);
+      }
+      fontName = importJson(ifs, blob);
+      ifs.close();
+    } else {
+      throw std::runtime_error("Unknown input file type: " + argInput);
+    }
+
+    if (bmpFont) {
+      mf::Font mameFont(blob.data());
+      if (!verifyGlyphs(bmpFont, mameFont, options.verbose,
+                        options.verboseForCode)) {
+        throw std::runtime_error("Glyph verification failed");
+      }
+    }
+
+    if (!argVerifyOnly && success) {
+      switch (outputFileType) {
+        case FileType::MAME_JSON: {
+          std::ofstream ofs(argOutput);
+          exportJson(ofs, blob, fontName);
+          ofs.close();
+        } break;
+
+        case FileType::MAME_HPP: {
+          std::ofstream ofs(argOutput);
+          exportHpp(ofs, blob, fontName);
+          ofs.close();
+        } break;
+
+        default:
+          throw std::runtime_error("Unknown output file type");
+      }
+    }
+  } catch (const std::exception &e) {
+    success = false;
+    std::cerr << "*ERROR: " << e.what() << std::endl;
+  }
+
   return success ? 0 : 1;
 }

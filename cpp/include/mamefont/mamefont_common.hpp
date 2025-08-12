@@ -11,37 +11,78 @@
 #include <stdexcept>
 #endif
 
-#define MAMEFONT_ALWAYS_INLINE inline __attribute__((always_inline))
+#ifdef MAMEFONT_USE_PROGMEM
+#include <avr/pgmspace.h>
+#endif
+
+#define MAMEFONT_INLINE inline __attribute__((always_inline))
 #define MAMEFONT_NOINLINE __attribute__((noinline))
 
 namespace mamefont {
 
-static constexpr uint16_t ENTRYPOINT_DUMMY = 0xffff;
+#ifdef MAMEFONT_DEBUG
+extern bool verbose;
+static inline void setVerbose(bool v) { verbose = v; }
+#endif
+
+#ifdef MAMEFONT_USE_PROGMEM
+static MAMEFONT_INLINE uint8_t readBlobU8(const uint8_t *ptr) {
+  return pgm_read_byte(ptr);
+}
+#else
+static MAMEFONT_INLINE uint8_t readBlobU8(const uint8_t *ptr) { return *ptr; }
+#endif
+
+static MAMEFONT_INLINE uint16_t readBlobU16(const uint8_t *ptr) {
+  uint8_t lo = readBlobU8(ptr);
+  uint8_t hi = readBlobU8(ptr + 1);
+  return (static_cast<uint16_t>(hi) << 8) | lo;
+}
+
+static constexpr uint16_t DUMMY_ENTRY_POINT = 0xffff;
 static constexpr uint8_t FRAGMENT_SIZE = 8;
-static constexpr uint8_t MAX_LUT_SIZE = 64;
+static constexpr uint8_t MAX_FRAGMENT_TABLE_SIZE = 64;
 
-static constexpr uint8_t OFST_FORMAT_VERSION = 0;
-static constexpr uint8_t OFST_FONT_FLAGS = 1;
-static constexpr uint8_t OFST_FIRST_CODE = 2;
-static constexpr uint8_t OFST_GLYPH_TABLE_LEN = 3;
-static constexpr uint8_t OFST_LUT_SIZE = 4;
-static constexpr uint8_t OFST_FONT_DIMENSION_0 = 5;
-static constexpr uint8_t OFST_FONT_DIMENSION_1 = 6;
-static constexpr uint8_t OFST_FONT_DIMENSION_2 = 7;
-
-static constexpr uint8_t OFST_GLYPH_TABLE = 8;
-
-static constexpr uint8_t OFST_ENTRY_POINT = 0;
-static constexpr uint8_t OFST_GLYPH_DIMENSION_0 = 2;
-static constexpr uint8_t OFST_GLYPH_DIMENSION_1 = 3;
-
-enum class Status : uint8_t {
+enum class Status : int8_t {
   SUCCESS = 0,
-  CHAR_CODE_OUT_OF_RANGE,
-  GLYPH_NOT_DEFINED,
-  UNKNOWN_OPCODE,
-  ABORTED_BY_ABO,
+  CHAR_CODE_OUT_OF_RANGE = 1,
+  GLYPH_NOT_DEFINED = 2,
+  NULL_POINTER = -1,
+  UNKNOWN_OPCODE = -2,
+  ABORTED_BY_ABO = -3,
 };
+
+static MAMEFONT_INLINE const char *statusToString(Status status) {
+  switch (status) {
+    case Status::SUCCESS:
+      return "Success";
+    case Status::CHAR_CODE_OUT_OF_RANGE:
+      return "Character code out of range";
+    case Status::GLYPH_NOT_DEFINED:
+      return "Glyph not defined";
+    case Status::NULL_POINTER:
+      return "Null pointer";
+    case Status::UNKNOWN_OPCODE:
+      return "Unknown opcode";
+    case Status::ABORTED_BY_ABO:
+      return "Aborted by ABO instruction";
+  }
+  return "Unknown status";
+}
+
+#ifdef MAMEFONT_EXCEPTIONS
+
+class MameFontException : public std::runtime_error {
+ public:
+  const Status status;
+  explicit MameFontException(Status status)
+      : std::runtime_error(statusToString(status)), status(status) {}
+};
+
+#define MAMEFONT_RETURN_ERROR(status) throw MameFontException(status)
+#else
+#define MAMEFONT_RETURN_ERROR(status) return (status)
+#endif
 
 enum class Operator : int8_t {
   NONE = 0,
@@ -55,6 +96,7 @@ enum class Operator : int8_t {
   LDI,
   CPX,
   ABO,
+  COUNT,
 };
 
 struct Instruction {
@@ -63,13 +105,12 @@ struct Instruction {
 
   Instruction() = default;
   Instruction(uint8_t b1) : length(1), code{b1, 0x00, 0x00} {}
-  Instruction(uint8_t b1, uint8_t b2)
-      : length(2), code{b1, b2, 0x00} {}
+  Instruction(uint8_t b1, uint8_t b2) : length(2), code{b1, b2, 0x00} {}
   Instruction(uint8_t b1, uint8_t b2, uint8_t b3)
       : length(3), code{b1, b2, b3} {}
 };
 
-static MAMEFONT_ALWAYS_INLINE constexpr uint8_t baseCodeOf(Operator op) {
+static MAMEFONT_INLINE constexpr uint8_t baseCodeOf(Operator op) {
   switch (op) {
     case Operator::RPT:
       return 0xE0;
@@ -89,28 +130,67 @@ static MAMEFONT_ALWAYS_INLINE constexpr uint8_t baseCodeOf(Operator op) {
       return 0x60;
     case Operator::CPX:
       return 0x40;
+    case Operator::ABO:
+      return 0xFF;
     default:
-      return 0xFF;  // including ABO
+#ifdef MAMEFONT_EXCEPTIONS
+      throw std::invalid_argument("Unknown opcode");
+#else
+      return 0xFF;
+#endif
   }
 }
 
-struct GlyphDimensions {
-  uint8_t width;
-  int8_t xSpacing;
-  uint8_t xNegativeOffset;
-};
+static MAMEFONT_INLINE constexpr uint8_t instSizeOf(Operator op) {
+  switch (op) {
+    case Operator::RPT:
+    case Operator::CPY:
+    case Operator::XOR:
+    case Operator::SFT:
+    case Operator::LUP:
+    case Operator::LUD:
+    case Operator::ABO:
+      return 1;
+    case Operator::SFI:
+    case Operator::LDI:
+      return 2;
+    case Operator::CPX:
+      return 3;
+    default:
+#ifdef MAMEFONT_EXCEPTIONS
+      throw std::invalid_argument("Unknown opcode");
+#else
+      return 0xFF;
+#endif
+  }
+}
 
-template <typename T, int Param_POS, int Param_WIDTH, T Param_MIN = 0,
-          T Param_STEP = 1>
+template <typename TRaw, typename TPacked, uint8_t Param_BYTE_OFFSET,
+          uint8_t Param_POS, uint8_t Param_WIDTH, TRaw Param_MIN = 0,
+          TRaw Param_STEP = 1>
 struct BitField {
-  static constexpr int POS = Param_POS;
-  static constexpr int WIDTH = Param_WIDTH;
-  static constexpr T STEP = Param_STEP;
-  static constexpr T MIN = Param_MIN;
-  static constexpr T MAX = MIN + ((1 << WIDTH) - 1) * STEP;
-  static MAMEFONT_ALWAYS_INLINE T read(uint8_t value) {
+  static constexpr uint8_t BYTE_OFFSET = Param_BYTE_OFFSET;
+  static constexpr uint8_t POS = Param_POS;
+  static constexpr uint8_t WIDTH = Param_WIDTH;
+  static constexpr TRaw STEP = Param_STEP;
+  static constexpr TRaw MIN = Param_MIN;
+  static constexpr TRaw MAX = MIN + ((1 << WIDTH) - 1) * STEP;
+  static constexpr TPacked MASK = ((1 << WIDTH) - 1) << POS;
+
+  static MAMEFONT_INLINE bool inRange(TRaw value, bool *rangeError = nullptr,
+                                      bool *stepError = nullptr) {
+    bool rangeOk = MIN <= value && value <= MAX;
+    bool stepOk = (value - MIN) % STEP == 0;
+    if (rangeError) *rangeError = !rangeOk;
+    if (stepError) *stepError = !stepOk;
+    return rangeOk && stepOk;
+  }
+
+  static MAMEFONT_INLINE TRaw read(TPacked value) {
     if ((1 << POS) == STEP) {
-      value &= ((1 << WIDTH) - 1) << POS;
+      if (WIDTH != sizeof(TPacked) * 8) {
+        value &= MASK;
+      }
       return MIN + value;
     } else {
       if (POS != 0) {
@@ -120,86 +200,286 @@ struct BitField {
       return MIN + STEP * value;
     }
   }
-  static MAMEFONT_ALWAYS_INLINE uint8_t place(int value) {
+
+  static MAMEFONT_INLINE TPacked place(int value, const char *name = "Value") {
 #ifdef MAMEFONT_EXCEPTIONS
-    if (value < MIN || MAX < value) {
-      throw std::out_of_range("Value " + std::to_string(value) +
+    bool rangeError, stepError;
+    inRange(value, &rangeError, &stepError);
+    if (rangeError) {
+      throw std::out_of_range(std::string(name) + " " + std::to_string(value) +
                               " out of range " + std::to_string(MIN) + ".." +
                               std::to_string(MAX));
     }
-    if ((value - MIN) % STEP != 0) {
-      throw std::invalid_argument("Value " + std::to_string(value) +
-                                  " is not a multiple of step " +
-                                  std::to_string(STEP));
+    if (stepError) {
+      throw std::invalid_argument(
+          std::string(name) + " " + std::to_string(value) +
+          " is not a multiple of step " + std::to_string(STEP));
     }
 #endif
     return ((value - MIN) / STEP) << POS;
   }
+
+  static MAMEFONT_INLINE void write(uint8_t *ptr, int value,
+                                    const char *name = "Value") {
+    TPacked rawValue = place(value);
+    ptr += BYTE_OFFSET;
+    if (sizeof(TPacked) == 1) {
+      *ptr = (*ptr & ~MASK) | rawValue;
+    } else {
+      uint8_t Lo = *ptr;
+      uint8_t Hi = *(ptr + 1);
+      Lo &= (~MASK) & 0xFF;
+      Hi &= (~MASK) >> 8;
+      Lo |= rawValue & 0xFF;
+      Hi |= rawValue >> 8;
+      *ptr = Lo;
+      *(ptr + 1) = Hi;
+    }
+  }
 };
 
-template <int Param_POS>
+template <uint8_t Param_BYTE_OFFSET, uint8_t Param_POS>
 struct BitFlag {
-  static constexpr int POS = Param_POS;
-  static constexpr int MASK = (1 << POS);
-  static MAMEFONT_ALWAYS_INLINE bool read(uint8_t value) {
+  static constexpr uint8_t BYTE_OFFSET = Param_BYTE_OFFSET;
+  static constexpr uint8_t POS = Param_POS;
+  static constexpr uint8_t MASK = (1 << POS);
+
+  static MAMEFONT_INLINE bool read(uint8_t value) {
     return 0 != (value & MASK);
   }
-  static MAMEFONT_ALWAYS_INLINE uint8_t place(bool value) {
-    return value ? MASK : 0;
+
+  static MAMEFONT_INLINE uint8_t place(bool value) { return value ? MASK : 0; }
+
+  static MAMEFONT_INLINE void write(uint8_t *ptr, bool value) {
+    if (value) {
+      *ptr |= MASK;
+    } else {
+      *ptr &= ~MASK;
+    }
   }
 };
 
-using FONT_DIM_FONT_HEIGHT = BitField<uint8_t, 0, 6, 1>;
-using FONT_DIM_Y_SPACING = BitField<uint8_t, 0, 6>;
-using FONT_DIM_MAX_GLYPH_WIDTH = BitField<uint8_t, 0, 6, 1>;
+struct FontFlags {
+  using VerticalFragment = BitFlag<0, 7>;
+  using Msb1st = BitFlag<0, 6>;
+  using LargeFont = BitFlag<0, 5>;
+  using Proportional = BitFlag<0, 4>;
+  using HasExtendedHeader = BitFlag<0, 0>;
 
-using FONT_FLAG_VERTICAL_FRAGMENT = BitFlag<7>;
-using FONT_FLAG_MSB1ST = BitFlag<6>;
-using FONT_FLAG_SHRINKED_GLYPH_TABLE = BitFlag<5>;
+  uint8_t value;
+  FontFlags() : value(0) {}
+  FontFlags(uint8_t flags) : value(flags) {}
 
-using GLYPH_DIM_WIDTH = BitField<uint8_t, 0, 6, 1>;
-using GLYPH_DIM_X_SPACING = BitField<int8_t, 0, 5, -16>;
-using GLYPH_DIM_X_NEGATIVE_OFFSET = BitField<uint8_t, 5, 3>;
+  MAMEFONT_INLINE bool verticalFragment() const {
+#ifdef MAMEFONT_HORIZONTAL_FRAGMENT_ONLY
+    return false;
+#elif defined(MAMEFONT_VERTICAL_FRAGMENT_ONLY)
+    return true;
+#else
+    return VerticalFragment::read(value);
+#endif
+  }
 
-using GLYPH_SHRINKED_DIM_WIDTH = BitField<uint8_t, 0, 4, 1>;
-using GLYPH_SHRINKED_DIM_X_SPACING = BitField<int8_t, 4, 2>;
-using GLYPH_SHRINKED_DIM_X_NEGATIVE_OFFSET = BitField<uint8_t, 6, 2>;
+  MAMEFONT_INLINE bool msb1st() const {
+#ifdef MAMEFONT_LSB1ST_ONLY
+    return false;
+#elif defined(MAMEFONT_MSB1ST_ONLY)
+    return true;
+#else
+    return Msb1st::read(value);
+#endif
+  }
 
-using LUP_INDEX = BitField<uint8_t, 0, 6>;
+  MAMEFONT_INLINE bool largeFont() const {
+#ifdef MAMEFONT_SMALL_ONLY
+    return false;
+#elif defined(MAMEFONT_LARGE_ONLY)
+    return true;
+#else
+    return LargeFont::read(value);
+#endif
+  }
 
-using LUD_INDEX = BitField<uint8_t, 0, 4>;
-using LUD_STEP = BitFlag<4>;
+  MAMEFONT_INLINE bool proportional() const {
+#ifdef MAMEFONT_MONOSPACED_ONLY
+    return false;
+#elif defined(MAMEFONT_PROPORTIONAL_ONLY)
+    return true;
+#else
+    return Proportional::read(value);
+#endif
+  }
 
-using SFT_REPEAT_COUNT = BitField<uint8_t, 0, 2, 1>;
-using SFT_SIZE = BitField<uint8_t, 2, 2, 1>;
-using SFT_POST_SET = BitFlag<4>;
-using SFT_RIGHT = BitFlag<5>;
+  MAMEFONT_INLINE bool hasExtendedHeader() const {
+#ifdef MAMEFONT_NO_EXTENDED_HEADER
+    return false;
+#else
+    return HasExtendedHeader::read(value);
+#endif
+  }
+};
 
-using SFI_REPEAT_COUNT = BitField<uint8_t, 0, 3, 1>;
-using SFI_PRE_SHIFT = BitFlag<3>;
-using SFI_POST_SET = SFT_POST_SET;
-using SFI_RIGHT = SFT_RIGHT;
-using SFI_PERIOD = BitField<uint8_t, 6, 2, 2>;
+struct FontHeader {
+  static constexpr uint8_t SIZE = 8;
+  using FormatVersion = BitField<uint8_t, uint8_t, 0, 0, 4>;
+  using Flags = BitField<uint8_t, uint8_t, 1, 0, 8>;
+  using FirstCode = BitField<uint8_t, uint8_t, 2, 0, 8>;
+  using LastCode = BitField<uint8_t, uint8_t, 3, 0, 8>;
+  using FragmentTableSize = BitField<uint8_t, uint8_t, 4, 0, 5, 2, 2>;
+  using MaxGlyphWidth = BitField<uint8_t, uint8_t, 5, 0, 6, 1>;
+  using GlyphHeight = BitField<uint8_t, uint8_t, 6, 0, 6, 1>;
+  using XMonoSpacing = BitField<uint8_t, uint8_t, 7, 0, 4>;
+  using YSpacing = BitField<uint8_t, uint8_t, 7, 4, 4>;
 
-using RPT_REPEAT_COUNT = BitField<uint8_t, 0, 4, 1>;
+  uint8_t formatVersion;
+  FontFlags flags;
+  uint8_t firstCode;
+  uint8_t lastCode;
+  uint8_t fragmentTableSize;
+  uint8_t maxGlyphWidth;
+  uint8_t glyphHeight;
+  uint8_t xMonoSpacing;
+  uint8_t ySpacing;
 
-using XOR_POS = BitField<uint8_t, 0, 3>;
-using XOR_WIDTH_2BIT = BitFlag<3>;
+  FontHeader() = default;
+  FontHeader(const uint8_t *blob) { loadFromBlob(blob); }
 
-using CPY_LENGTH = BitField<uint8_t, 0, 3, 1>;
-using CPY_OFFSET = BitField<uint8_t, 3, 2>;
-using CPY_BYTE_REVERSE = BitFlag<5>;
+  MAMEFONT_NOINLINE void loadFromBlob(const uint8_t *blob) {
+    const uint8_t *ptr = blob;
+    formatVersion = FontHeader::FormatVersion::read(readBlobU8(ptr++));
+    flags = FontHeader::Flags::read(readBlobU8(ptr++));
+    firstCode = FontHeader::FirstCode::read(readBlobU8(ptr++));
+    lastCode = FontHeader::LastCode::read(readBlobU8(ptr++));
+    fragmentTableSize = FontHeader::FragmentTableSize::read(readBlobU8(ptr++));
+    maxGlyphWidth = FontHeader::MaxGlyphWidth::read(readBlobU8(ptr++));
+    glyphHeight = FontHeader::GlyphHeight::read(readBlobU8(ptr++));
+    uint8_t byte7 = readBlobU8(ptr++);
+    xMonoSpacing = FontHeader::XMonoSpacing::read(byte7);
+    ySpacing = FontHeader::YSpacing::read(byte7);
+  }
 
-static constexpr uint8_t CPX_OFFSET_WIDTH = 9;
-static constexpr uint8_t CPX_OFFSET_STEP = 1;
-static constexpr uint16_t CPX_OFFSET_MIN = 0;
-static constexpr uint16_t CPX_OFFSET_MAX =
-    CPX_OFFSET_MIN + ((1 << CPX_OFFSET_WIDTH) - 1) * CPX_OFFSET_STEP;
-using CPX_OFFSET_H = BitField<uint8_t, 0, CPX_OFFSET_WIDTH - 8>;
-using CPX_INVERSE = BitFlag<1>;
-using CPX_LENGTH = BitField<uint8_t, 2, 4, 4, 4>;
-using CPX_BYTE_REVERSE = BitFlag<6>;
-using CPX_BIT_REVERSE = BitFlag<7>;
+#ifdef MAMEFONT_DEBUG
+  void dumpHeader(const char *indent) const {
+    printf("%sFormat Version  : %d\n", indent, formatVersion);
+    printf("%sFlags           : 0x%02X\n", indent, flags.value);
+    printf("%s  Vertical Frag.  : %s\n", indent,
+           flags.verticalFragment() ? "Yes" : "No");
+    printf("%s  MSB First       : %s\n", indent, flags.msb1st() ? "Yes" : "No");
+    printf("%s  Large Font      : %s\n", indent,
+           flags.largeFont() ? "Yes" : "No");
+    printf("%s  Proportional    : %s\n", indent,
+           flags.proportional() ? "Yes" : "No");
+    printf("%s  Has Ext. Header : %s\n", indent,
+           flags.hasExtendedHeader() ? "Yes" : "No");
+    printf("%sFirst Code      : 0x%02X\n", indent, firstCode);
+    printf("%sLast Code       : 0x%02X\n", indent, lastCode);
+    printf("%sFrag Table Size : %d\n", indent, fragmentTableSize);
+    printf("%sMax Glyph Width : %d\n", indent, maxGlyphWidth);
+    printf("%sGlyph Height    : %d\n", indent, glyphHeight);
+    printf("%sX Spacing (Mono): %d\n", indent, xMonoSpacing);
+    printf("%sY Spacing       : %d\n", indent, ySpacing);
+  }
+#endif
+};
+
+struct ExtendedHeader {
+  using Size = BitField<uint16_t, uint8_t, 0, 0, 8, 2, 2>;
+};
+
+struct NormalGlyphEntry {
+  static constexpr uint8_t SIZE = 2;
+  using EntryPoint = BitField<uint16_t, uint16_t, 0, 0, 14>;
+};
+
+struct SmallGlyphEntry {
+  static constexpr uint8_t SIZE = 1;
+  using EntryPoint = BitField<uint16_t, uint8_t, 0, 0, 8, 0, 2>;
+};
+
+struct NormalGlyphDimension {
+  static constexpr uint8_t SIZE = 2;
+  using GlyphWidth = BitField<uint8_t, uint8_t, 0, 0, 6, 1>;
+  using XSpacing = BitField<int8_t, int8_t, 1, 0, 5, -16>;
+  using XStepBack = BitField<uint8_t, uint8_t, 1, 5, 3>;
+};
+
+struct SmallGlyphDimension {
+  static constexpr uint8_t SIZE = 1;
+  using GlyphWidth = BitField<uint8_t, uint8_t, 0, 0, 4, 1>;
+  using XSpacing = BitField<int8_t, int8_t, 0, 4, 2>;
+  using XStepBack = BitField<uint8_t, uint8_t, 0, 6, 2>;
+};
+
+struct Glyph {
+ public:
+  uint16_t entryPoint;
+  uint8_t glyphWidth;  // todo: rename to width
+  int8_t xSpacing;
+  uint8_t xStepBack;
+  MAMEFONT_INLINE bool isValid() const {
+    return entryPoint != DUMMY_ENTRY_POINT;
+  }
+};
+
+struct LUP {
+  static constexpr uint8_t SIZE = 1;
+  using Index = BitField<uint8_t, uint8_t, 0, 0, 6>;
+};
+
+struct LUD {
+  static constexpr uint8_t SIZE = 1;
+  using Index = BitField<uint8_t, uint8_t, 0, 0, 4>;
+  using Step = BitFlag<0, 4>;
+};
+
+struct LDI {
+  static constexpr uint8_t SIZE = 2;
+  using Fragment = BitField<uint8_t, uint8_t, 1, 0, 8>;
+};
+
+struct SFT {
+  static constexpr uint8_t SIZE = 1;
+  using RepeatCount = BitField<uint8_t, uint8_t, 0, 0, 2, 1>;
+  using Size = BitField<uint8_t, uint8_t, 0, 2, 2, 1>;
+  using PostSet = BitFlag<0, 4>;
+  using Right = BitFlag<0, 5>;
+};
+
+struct SFI {
+  static constexpr uint8_t SIZE = 2;
+  using RepeatCount = BitField<uint8_t, uint8_t, 1, 0, 3, 1>;
+  using PreShift = BitFlag<1, 3>;
+  using PostSet = BitFlag<1, SFT::PostSet::POS>;
+  using Right = BitFlag<1, SFT::Right::POS>;
+  using Period = BitField<uint8_t, uint8_t, 1, 6, 2, 2>;
+};
+
+struct RPT {
+  static constexpr uint8_t SIZE = 1;
+  using RepeatCount = BitField<uint8_t, uint8_t, 0, 0, 4, 1>;
+};
+
+struct XOR {
+  static constexpr uint8_t SIZE = 1;
+  using Pos = BitField<uint8_t, uint8_t, 0, 0, 3>;
+  using Width2Bit = BitFlag<0, 3>;
+};
+
+struct CPY {
+  static constexpr uint8_t SIZE = 1;
+  using Length = BitField<uint8_t, uint8_t, 0, 0, 3, 1>;
+  using Offset = BitField<uint8_t, uint8_t, 0, 3, 2>;
+  using ByteReverse = BitFlag<0, 5>;
+};
+
+struct CPX {
+  static constexpr uint8_t SIZE = 3;
+  using Offset = BitField<uint16_t, uint16_t, 0, 0, 9>;
+  using Inverse = BitFlag<1, 1>;
+  using Length = BitField<uint8_t, uint8_t, 1, 2, 4, 4, 4>;
+  using ByteReverse = BitFlag<1, 6>;
+  using BitReverse = BitFlag<1, 7>;
+};
 
 using frag_t = uint8_t;
 
@@ -219,7 +499,7 @@ using prog_cntr_t = uint16_t;
 const char *mnemonicOf(Operator op);
 #endif
 
-static MAMEFONT_ALWAYS_INLINE uint8_t getRightMask(uint8_t width) {
+static MAMEFONT_INLINE uint8_t getRightMask(uint8_t width) {
   switch (width) {
     case 0:
       return 0x00;
@@ -240,6 +520,13 @@ static MAMEFONT_ALWAYS_INLINE uint8_t getRightMask(uint8_t width) {
     default:
       return 0xff;
   }
+}
+
+static MAMEFONT_INLINE uint8_t reverseBits(uint8_t b) {
+  b = ((b & 0x55) << 1) | ((b & 0xaa) >> 1);
+  b = ((b & 0x33) << 2) | ((b & 0xcc) >> 2);
+  b = (b << 4) | (b >> 4);
+  return b;
 }
 
 }  // namespace mamefont
