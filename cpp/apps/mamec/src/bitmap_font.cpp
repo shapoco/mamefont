@@ -38,28 +38,21 @@ BitmapFontClass::BitmapFontClass(const std::string &bmpPathStr) {
 
     auto dims = parseDimensionIdentifier(fullName, lastUnderlinePos + 1);
 
-    if (dims.find(Dimension::BODY_SIZE) == dims.end()) {
-      throw std::runtime_error("Body size 's' is required: " + fullName);
+    if (dims.find(Dimension::BODY_SIZE) != dims.end()) {
+      bodySize = dims[Dimension::BODY_SIZE];
     }
-    bodySize = dims[Dimension::BODY_SIZE];
 
-    capHeight = bodySize;
     if (dims.find(Dimension::CAP_HEIGHT) != dims.end()) {
       capHeight = dims[Dimension::CAP_HEIGHT];
     }
 
-    ascenderSpacing = 0;
     if (dims.find(Dimension::ASCENDER_SPACING) != dims.end()) {
       ascenderSpacing = dims[Dimension::ASCENDER_SPACING];
     }
 
-    weight = 1;
     if (dims.find(Dimension::WEIGHT) != dims.end()) {
       weight = dims[Dimension::WEIGHT];
     }
-
-    defaultXSpacing = std::ceil(bodySize / 16.0);
-    ySpacing = std::ceil((bodySize - ascenderSpacing) * 1.2 - bodySize);
   }
 
   // parse JSON file
@@ -90,16 +83,33 @@ BitmapFontClass::BitmapFontClass(const std::string &bmpPathStr) {
       }
     }
 
-    if (jsonObj.contains("x_spacing")) {
-      const auto xSpacingObj = jsonObj.at("x_spacing");
-      if (xSpacingObj.contains("default")) {
-        xSpacingObj.at("default").get_to(defaultXSpacing);
+    if (jsonObj.contains("dimensions")) {
+      const auto &dimsObj = jsonObj.at("dimensions");
+
+      if (dimsObj.contains("body_size")) {
+        dimsObj.at("body_size").get_to(bodySize);
+      }
+
+      if (dimsObj.contains("x_spacing")) {
+        dimsObj.at("x_spacing").get_to(defaultXSpacing);
+      }
+
+      if (dimsObj.contains("y_spacing")) {
+        dimsObj.at("y_spacing").get_to(ySpacing);
       }
     }
+  }
 
-    if (jsonObj.contains("y_spacing")) {
-      jsonObj.at("y_spacing").get_to(ySpacing);
-    }
+  if (capHeight == DIMENSION_INVALID) capHeight = bodySize;
+  if (weight == DIMENSION_INVALID) weight = 1;
+  if (ascenderSpacing == DIMENSION_INVALID) ascenderSpacing = 0;
+
+  if (defaultXSpacing == DIMENSION_INVALID) {
+    defaultXSpacing = std::ceil(bodySize / 16.0);
+  }
+
+  if (ySpacing == DIMENSION_INVALID) {
+    ySpacing = std::ceil((bodySize - ascenderSpacing) * 1.2 - bodySize);
   }
 
   // extract glyphs

@@ -21,14 +21,15 @@ std::unordered_map<Dimension, int> parseDimensionIdentifier(
 
 class BitmapFontClass {
  public:
+  static constexpr int DIMENSION_INVALID = -9999;
   std::string fullName;
   std::string familyName;
-  int bodySize = -1;
-  int capHeight = -1;
-  int ascenderSpacing = -1;
-  int weight = -1;
-  int defaultXSpacing = -1;
-  int ySpacing = -1;
+  int bodySize = DIMENSION_INVALID;
+  int capHeight = DIMENSION_INVALID;
+  int ascenderSpacing = DIMENSION_INVALID;
+  int weight = DIMENSION_INVALID;
+  int defaultXSpacing = DIMENSION_INVALID;
+  int ySpacing = DIMENSION_INVALID;
 
   std::vector<std::shared_ptr<BitmapGlyphClass> > glyphs;
 

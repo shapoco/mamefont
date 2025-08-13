@@ -52,7 +52,8 @@ LDFLAGS := \
 	-mmcu=$(MCU)
 
 EXTRA_DEPENDENCIES := \
-	Makefile
+	Makefile \
+	$(MAMEC)
 
 all: build
 
