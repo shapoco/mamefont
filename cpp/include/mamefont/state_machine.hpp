@@ -30,16 +30,18 @@ class StateMachine {
 
  public:
 #ifdef MAMEFONT_DEBUG
-  Operator lastOp = Operator::NONE;
+  Operator dbgLastOp = Operator::NONE;
   Cursor dbgDumpCursor;
   Operator *dbgOpLog = nullptr;
-  uint8_t lastInstByte1 = 0;
+  uint8_t dbgLastInstByte1 = 0;
+  prog_cntr_t dbgStartPc = 0;
+  prog_cntr_t dbgLastPc = 0;
 
-  int numInstsPerOperator[static_cast<int>(Operator::COUNT)] = {0};
-  int generatedFragsPerOperator[static_cast<int>(Operator::COUNT)] = {0};
+  int dbgNumInstsPerOpr[static_cast<int>(Operator::COUNT)] = {0};
+  int dbgGenFragsPerOpr[static_cast<int>(Operator::COUNT)] = {0};
   void logInstructionPerformance(Operator op, int size) {
-    numInstsPerOperator[static_cast<int>(op)]++;
-    generatedFragsPerOperator[static_cast<int>(op)] += size;
+    dbgNumInstsPerOpr[static_cast<int>(op)]++;
+    dbgGenFragsPerOpr[static_cast<int>(op)] += size;
   }
 #endif
 
@@ -99,6 +101,10 @@ class StateMachine {
 
     lastFragment = 0x00;
     programCounter = glyph.entryPoint;
+#ifdef MAMEFONT_DEBUG
+    dbgStartPc = programCounter;
+    dbgLastPc = programCounter;
+#endif
 
     if (programCounter == DUMMY_ENTRY_POINT) {
 #if MAMEFONT_EXCEPTIONS
@@ -113,8 +119,8 @@ class StateMachine {
     if (dbgOpLog) delete[] dbgOpLog;
     dbgOpLog = new Operator[buff.stride * glyphHeight];
     memset(dbgOpLog, 0, buff.stride * glyphHeight * sizeof(Operator));
-    memset(numInstsPerOperator, 0, sizeof(numInstsPerOperator));
-    memset(generatedFragsPerOperator, 0, sizeof(generatedFragsPerOperator));
+    memset(dbgNumInstsPerOpr, 0, sizeof(dbgNumInstsPerOpr));
+    memset(dbgGenFragsPerOpr, 0, sizeof(dbgGenFragsPerOpr));
 
     if (verbose) {
       printf("  entryPoint    : %d\n", programCounter);
@@ -129,7 +135,7 @@ class StateMachine {
     while (numLanesToGlyphEnd > 0) {
       uint8_t inst = readBlobU8(bytecode + (programCounter++));
 #ifdef MAMEFONT_DEBUG
-      lastInstByte1 = inst;
+      dbgLastInstByte1 = inst;
 #endif
 
       if ((inst & 0x80) == 0) {
@@ -190,7 +196,7 @@ class StateMachine {
 
 #define MAMEFONT_BEFORE_OP(op, inst_size, fmt, ...)                          \
   do {                                                                       \
-    lastOp = op;                                                             \
+    dbgLastOp = op;                                                          \
     dbgDumpCursor = writeCursor;                                             \
     dbgOpLog[dbgDumpCursor.offset] = op;                                     \
     if (!verbose) break;                                                     \
@@ -220,7 +226,8 @@ class StateMachine {
 
 #define MAMEFONT_AFTER_OP(len)                      \
   do {                                              \
-    logInstructionPerformance(lastOp, (len));       \
+    dbgLastPc = programCounter;                     \
+    logInstructionPerformance(dbgLastOp, (len));    \
     if (!verbose) break;                            \
     for (int i = 0; i < (len); i++) {               \
       if (i % 16 == 0 && i > 0) {                   \
@@ -313,9 +320,9 @@ class StateMachine {
 
     shiftCore(sfiFlags, 1, rpt, period);
 
-    MAMEFONT_AFTER_OP(rpt * period + (preShift ? 1 : 0));
-
     programCounter += 1;
+
+    MAMEFONT_AFTER_OP(rpt * period + (preShift ? 1 : 0));
   }
 #endif
 
@@ -400,9 +407,9 @@ class StateMachine {
     if (byteReverse) offset -= length;
     copyCore(cpxFlags, -offset, length);
 
-    MAMEFONT_AFTER_OP(length);
-
     programCounter += 2;
+
+    MAMEFONT_AFTER_OP(length);
   }
 #endif
 
@@ -431,8 +438,8 @@ class StateMachine {
     frag_t frag = readBlobU8(bytecode + programCounter);
     MAMEFONT_BEFORE_OP(Operator::LDI, 2, "(frag=0x%02X)", frag);
     write(frag);
-    MAMEFONT_AFTER_OP(1);
     programCounter += 1;
+    MAMEFONT_AFTER_OP(1);
   }
 
   MAMEFONT_INLINE

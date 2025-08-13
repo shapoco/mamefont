@@ -4,15 +4,15 @@
 #include "mamec/mamec_common.hpp"
 
 namespace mamefont::mamec {
-std::vector<frag_t> GlyphObjectClass::createCompareMaskArray() const {
-  std::vector<frag_t> compareMask;
-  int n = fragments.size();
-  compareMask.resize(n, 0xFF);
-  frag_t mask = lastLaneCompareMask();
-  for (int i = n - tall(); i < n; i++) {
-    compareMask[i] = mask;
+
+void GlyphObjectClass::replaceOperation(int index, const Operation &newOpr) {
+  if (index < 0 || index >= operations.size()) {
+    throw std::out_of_range("Index " + std::to_string(index) +
+                            " is out of range in replaceOperation()");
   }
-  return std::move(compareMask);
+  newOpr->beforeBarrier = operations[index]->beforeBarrier;
+  newOpr->afterBarrier = operations[index]->afterBarrier;
+  operations[index] = newOpr;
 }
 
 void GlyphObjectClass::report(std::string indent) const {
@@ -25,9 +25,11 @@ void GlyphObjectClass::report(std::string indent) const {
   std::cout << indent << "Width: " << width << std::endl;
   std::cout << indent << "X Spacing: " << xSpacing << std::endl;
   std::cout << indent << "X Negative Offset: " << xStepBack << std::endl;
-  std::cout << indent << "Fragments (" << fragments.size() << " Bytes):" << std::endl;
+  std::cout << indent << "Fragments (" << fragments.size()
+            << " Bytes):" << std::endl;
   dumpByteArray(fragments, indent + "  ");
-  std::cout << indent << "Bytecode (" << operations.size() << " ops, " << byteCode.size() << " Bytes):" << std::endl;
+  std::cout << indent << "Bytecode (" << operations.size() << " ops, "
+            << byteCode.size() << " Bytes):" << std::endl;
   dumpByteArray(byteCode, indent + "  ");
 }
 }  // namespace mamefont::mamec

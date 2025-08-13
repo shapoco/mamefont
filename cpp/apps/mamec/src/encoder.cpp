@@ -3,6 +3,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <stack>
 #include <vector>
 
 #include "mamec/bitmap_glyph.hpp"
@@ -36,29 +37,30 @@ void Encoder::addFont(const BitmapFont &bmpFont) {
 void Encoder::addGlyph(const BitmapFont &bmpFont, const BitmapGlyph &bmpGlyph) {
   auto frags = bmpGlyph->bmp->toFragments(options.verticalFrag, options.msb1st);
 
-  GlyphObject existingGlyph = std::make_shared<GlyphObjectClass>(
-      bmpGlyph->code, frags, bmpGlyph->width, bmpFont->bodySize,
-      options.verticalFrag, options.msb1st,
-      bmpFont->defaultXSpacing - bmpGlyph->leftAntiSpace,
-      bmpGlyph->leftAntiSpace);
-
-  // todo: delete
-  // Detect glyph duplication
-  for (auto &other : glyphs) {
-    int otherCode = other.first;
-    GlyphObject &otherGlyph = other.second;
-    if (otherGlyph->fragments == frags) {
-      if (options.verbose) {
-        std::cout << "  Glyph duplication found: " << c2s(bmpGlyph->code)
-                  << " --> " << c2s(otherCode) << std::endl;
-      }
-
-      existingGlyph->fragmentsSameAsCode = otherCode;
-      break;
+  std::vector<frag_t> compareMask;
+  int numFrags = frags.size();
+  compareMask.resize(numFrags, 0xFF);
+  if (!options.forceZeroPadding) {
+    int w = bmpGlyph->bmp->width;
+    int h = bmpGlyph->bmp->height;
+    int viewPort = options.verticalFrag ? h : w;
+    int trackLength = options.verticalFrag ? w : h;
+    int numTracks = (viewPort + 7) / 8;
+    int maskWidth = viewPort - (numTracks - 1) * 8;
+    frag_t lastTrackMask = (1 << maskWidth) - 1;
+    if (options.msb1st) {
+      lastTrackMask <<= (8 - maskWidth);
+    }
+    for (int i = numFrags - trackLength; i < numFrags; i++) {
+      compareMask[i] = lastTrackMask;
     }
   }
 
-  glyphs[bmpGlyph->code] = existingGlyph;
+  glyphs[bmpGlyph->code] = std::make_shared<GlyphObjectClass>(
+      bmpGlyph->code, frags, compareMask, bmpGlyph->width, bmpFont->bodySize,
+      options.verticalFrag, options.msb1st,
+      bmpFont->defaultXSpacing - bmpGlyph->leftAntiSpace,
+      bmpGlyph->leftAntiSpace);
 }
 
 void Encoder::encode() {
@@ -70,6 +72,11 @@ void Encoder::encode() {
     dumpByteArray(fragTable, "  ");
     std::cout << "  (" << fragTable.size() << " entries)" << std::endl;
   }
+
+  if (options.verbose) {
+    std::cout << "Detecting fragment duplications..." << std::endl;
+  }
+  detectFragmentDuplications("  ");
 
   if (options.verbose) {
     std::cout << "Encoding glyphs..." << std::endl;
@@ -128,52 +135,88 @@ void Encoder::generateInitialFragTable() {
   generateFragTableFromCountMap(fragCountMap, mf::MAX_FRAGMENT_TABLE_SIZE / 2);
 }
 
+void Encoder::detectFragmentDuplications(std::string indent) {
+  std::map<int, std::map<int, bool>> dupTree;
+
+  // Find a glyph that is completely contained within the beginning of another
+  // glyph's fragment
+  for (auto &thisPair : glyphs) {
+    GlyphObject &thisGlyph = thisPair.second;
+    const auto &thisFrags = thisGlyph->fragments;
+    int thisSize = thisFrags.size();
+    int thisCode = thisGlyph->code;
+
+    int bestDupSrcCode = -1;
+    size_t bestDupSrcSize = 0;
+    for (auto &otherPair : glyphs) {
+      GlyphObject &otherGlyph = otherPair.second;
+      const auto &otherFrags = otherGlyph->fragments;
+      int otherSize = otherFrags.size();
+      int otherCode = otherGlyph->code;
+
+      if (otherCode == thisCode) continue;
+      if (otherSize < thisSize) continue;
+      if (otherSize == thisSize && otherCode > thisCode) continue;
+
+      VecRef otherPart(otherFrags, 0, thisSize);
+      if (!maskedEqual(thisFrags, otherPart, thisGlyph->compareMask)) {
+        continue;
+      }
+
+      if (otherSize > bestDupSrcSize) {
+        bestDupSrcSize = otherSize;
+        bestDupSrcCode = otherGlyph->code;
+      }
+    }
+
+    if (bestDupSrcCode >= 0) {
+      thisGlyph->fragDupSrcCode = bestDupSrcCode;
+      dupTree[bestDupSrcCode][thisCode] = true;
+    }
+  }
+
+  // Resolve chained references
+  for (auto &rootPair : glyphs) {
+    GlyphObject &rootGlyph = rootPair.second;
+    if (rootGlyph->fragDupSrcCode >= 0) continue;
+
+    std::stack<GlyphObject> stack;
+    stack.push(rootGlyph);
+
+    while (!stack.empty()) {
+      GlyphObject &parentGlyph = stack.top();
+      stack.pop();
+
+      if (parentGlyph->fragDupSrcCode >= 0) {
+        parentGlyph->fragDupSrcCode = rootGlyph->code;
+        if (options.verbose) {
+          std::cout << indent
+                    << "Fragment duplication found: " << c2s(parentGlyph->code)
+                    << " --> " << c2s(rootGlyph->code) << std::endl;
+        }
+      }
+
+      if (dupTree.contains(rootGlyph->code)) {
+        for (auto &childPair : dupTree[parentGlyph->code]) {
+          auto &childGlyph = glyphs[childPair.first];
+          stack.push(childGlyph);
+        }
+      }
+    }
+  }
+
+  for (auto &thisPair : glyphs) {
+    GlyphObject &thisGlyph = thisPair.second;
+    if (thisGlyph->fragDupSrcCode >= 0) {
+      glyphs[thisGlyph->fragDupSrcCode]
+          ->barrierPosForSolveFragDup[thisGlyph->fragments.size()] = true;
+    }
+  }
+}
+
 void Encoder::generateInitialOperations(GlyphObject &glyph, bool verbose,
                                         std::string indent) {
   int numFrags = glyph->fragments.size();
-
-  std::vector<frag_t> compareMask(numFrags, 0xFF);
-  if (!options.forceZeroPadding) {
-    compareMask = glyph->createCompareMaskArray();
-
-    if (verbose) {
-      std::cout << indent << "Compare mask: " << std::endl;
-      dumpByteArray(compareMask, indent + "  ");
-    }
-  }
-
-  int duplicatedCode = -1;
-  size_t duplicatedSize = 0;
-  for (auto &otherPair : glyphs) {
-    GlyphObject &other = otherPair.second;
-    auto otherSize = other->fragments.size();
-    if (other->code == glyph->code) continue;
-    if (otherSize < numFrags) {
-      continue;
-    }
-    if (otherSize == numFrags && other->code > glyph->code) {
-      continue;
-    }
-
-    auto otherPart = VecRef(other->fragments, 0, numFrags);
-    if (!maskedEqual(glyph->fragments, otherPart, compareMask)) {
-      continue;
-    }
-
-    if (otherSize > duplicatedSize) {
-      duplicatedSize = otherSize;
-      duplicatedCode = other->code;
-    }
-  }
-  if (false && duplicatedCode >= 0) {
-    // todo: Enable
-    if (verbose) {
-      std::cout << indent
-                << "Fragment duplication found: " << c2s(glyph->code)
-                << " --> " << c2s(duplicatedCode) << std::endl;
-    }
-    glyph->fragmentsSameAsCode = duplicatedCode;
-  }
 
   std::vector<std::vector<int>> scoreBoard(numFrags + 1,
                                            std::vector<int>(256, DUMMY_COST));
@@ -203,7 +246,7 @@ void Encoder::generateInitialOperations(GlyphObject &glyph, bool verbose,
     }
 
     VecRef future(glyph->fragments, curr->pos, numFrags);
-    VecRef mask(compareMask, curr->pos, numFrags);
+    VecRef mask(glyph->compareMask, curr->pos, numFrags);
 
     std::vector<Operation> oprs;
     TryContext ctx{glyph->code, oprs, curr, future, mask};
@@ -227,6 +270,21 @@ void Encoder::generateInitialOperations(GlyphObject &glyph, bool verbose,
             c2s(glyph->code));
       }
 #endif
+
+      // Reject operation that cross barriers for fragment duplication
+      bool barrierViolated = false;
+      for (auto &barrierPair : glyph->barrierPosForSolveFragDup) {
+        int barrierPos = barrierPair.first;
+        int outputStart = curr->pos;
+        int outputEnd = outputStart + opr->output.size();
+        if (outputStart < barrierPos && barrierPos < outputEnd) {
+          barrierViolated = true;
+          break;
+        }
+        opr->afterBarrier |= (outputStart == barrierPos);
+        opr->beforeBarrier |= (outputEnd == barrierPos);
+      }
+      if (barrierViolated) continue;
 
       BufferState p = curr;
       for (frag_t frag : opr->output) {
@@ -274,8 +332,7 @@ void Encoder::generateInitialOperations(GlyphObject &glyph, bool verbose,
   }
 
   if (!goalState) {
-    throw std::runtime_error("No solutions found for " +
-                             c2s(glyph->code));
+    throw std::runtime_error("No solutions found for " + c2s(glyph->code));
   }
 
   BufferState p = goalState;
@@ -725,9 +782,9 @@ void Encoder::fixLUPIndex() {
       if (opr->op == mf::Operator::LUP) {
         int newIndex = reverseLookup(opr->output[0]);
         if (newIndex >= 0) {
-          glyph->operations[i] = makeLUP(newIndex, opr->output[0]);
+          glyph->replaceOperation(i, makeLUP(newIndex, opr->output[0]));
         } else {
-          glyph->operations[i] = makeLDI(opr->output[0], 0);
+          glyph->replaceOperation(i, makeLDI(opr->output[0], 0));
           std::cerr << "  *WARNING: LUP unexpectedly replaced with LDI for "
                     << c2s(glyph->code) << ", since fragment 0x"
                     << byteToHexStr(opr->output[0])
@@ -750,33 +807,43 @@ void Encoder::replaceLDItoLUP(bool verbose, std::string indent) {
         frag_t frag = opr->output[0];
         int index = reverseLookup(frag);
         if (index >= 0) {
-          glyph->operations[i] = makeLUP(index, frag);
+          glyph->replaceOperation(i, makeLUP(index, frag));
         }
       }
     }
 
     // replace pair of LUP with LUD if possible
-    int index1 = -1;
+    Operation opr1 = nullptr;
+    int idx1 = -1;
     frag_t frag1 = 0x00;
     for (int i = 0; i < glyph->operations.size(); i++) {
       auto &opr = glyph->operations[i];
-      int index2 = -1;
+      Operation opr2 = nullptr;
+      int idx2 = -1;
       frag_t frag2 = 0x00;
       if (opr->op == mf::Operator::LUP) {
-        index2 = mf::LUP::Index::read(opr->code[0]);
-        frag2 = opr->output[0];
+        opr2 = opr;
+        idx2 = mf::LUP::Index::read(opr2->code[0]);
+        frag2 = opr2->output[0];
       }
-      if (index1 >= 0 && index2 >= 0 && index1 <= mf::LUD::Index::MAX &&
-          (index1 == index2 || index1 + 1 == index2)) {
-        int step = index2 - index1;
-        glyph->operations[i - 1] = makeLUD(index1, step, frag1, frag2);
-        glyph->operations.erase(glyph->operations.begin() + i);
-        i--;           // Adjust index after removal
-        index2 = -1;   // Reset index2 to avoid double replacement
-        frag2 = 0x00;  // Reset frag2 to avoid double replacement
-        numReplacedOps++;
+      if (idx1 >= 0 && idx2 >= 0) {
+        int step = idx2 - idx1;
+        if (idx1 <= mf::LUD::Index::MAX && (step == 0 || step == 1)) {
+          if (!opr1->beforeBarrier && !opr2->afterBarrier) {
+            auto lud = makeLUD(idx1, step, frag1, frag2);
+            glyph->replaceOperation(i - 1, lud);
+            glyph->operations.erase(glyph->operations.begin() + i);
+            lud->beforeBarrier = opr2->beforeBarrier;
+            i--;
+            opr2 = nullptr;
+            idx2 = -1;
+            frag2 = 0x00;
+            numReplacedOps++;
+          }
+        }
       }
-      index1 = index2;
+      opr1 = opr2;
+      idx1 = idx2;
       frag1 = frag2;
     }
   }
@@ -801,6 +868,40 @@ int Encoder::reverseLookup(frag_t frag) {
 void Encoder::generateBlob() {
   if (options.verbose) {
     std::cout << "Generating blob..." << std::endl;
+  }
+
+  // Check if fragment duplications are solvable
+  for (const auto &thisPair : glyphs) {
+    auto &thisGlyph = thisPair.second;
+    if (thisGlyph->fragDupSrcCode < 0) continue;
+
+    int thisSize = thisGlyph->fragments.size();
+    int thisWidth = thisGlyph->width;
+
+    auto otherGlyph = glyphs[thisGlyph->fragDupSrcCode];
+    int otherSize = 0;
+    int otherWidth = otherGlyph->width;
+    bool success = false;
+    Operation violator = nullptr;
+    for (const auto &opr : otherGlyph->operations) {
+      int newSize = otherSize + opr->output.size();
+      if (newSize >= thisSize) {
+        if (newSize == thisSize) {
+          success = true;
+        } else {
+          violator = opr;
+        }
+        break;
+      }
+      otherSize = newSize;
+    }
+    if (!success) {
+      std::cerr << "*WARNING: Failed to solve fragment duplication: "
+                << c2s(thisGlyph->code) << " --> " << c2s(otherGlyph->code)
+                << " because barrier crossed by operation "
+                << mnemonicOf(violator->op) << std::endl;
+      thisGlyph->fragDupSrcCode = -1;  // Mark as unresolved
+    }
   }
 
   // Determine format of Glyph Table
@@ -833,7 +934,7 @@ void Encoder::generateBlob() {
     }
 
     // Check entry point
-    if (glyph->fragmentsSameAsCode < 0) {
+    if (glyph->fragDupSrcCode < 0) {
       if (nextEntryPoint >= mf::SmallGlyphEntry::EntryPoint::MAX) {
         largeFontReasons["entryPoint"] = true;
       }
@@ -871,21 +972,26 @@ void Encoder::generateBlob() {
     }
   }
 
-  // Construct bytecode block
-  std::vector<uint8_t> bytecodes;
+  std::vector<int> codes;
   for (const auto &glyphPair : glyphs) {
-    const GlyphObject &glyph = glyphPair.second;
-    if (glyph->fragmentsSameAsCode >= 0) {
-      const GlyphObject &dupGlyph = glyphs[glyph->fragmentsSameAsCode];
-      glyph->entryPoint = dupGlyph->entryPoint;
-      glyph->byteCodeSize = dupGlyph->byteCodeSize;
+    codes.push_back(glyphPair.first);
+  }
+  std::sort(codes.begin(), codes.end());
+  int firstCode = codes.front();
+  int lastCode = codes.back();
+
+  // Construct bytecode block and fix entry points
+  std::vector<uint8_t> bytecodes;
+  for (int code : codes) {
+    const GlyphObject &glyph = glyphs[code];
+    if (glyph->fragDupSrcCode >= 0) {
       continue;
     }
     glyph->entryPoint = bytecodes.size();
     for (const auto &opr : glyph->operations) {
       opr->writeCodeTo(bytecodes);
     }
-    if (!largeFont) {
+    if (!largeFont && code != lastCode) {
       while (bytecodes.size() % 2 != 0) {
         bytecodes.push_back(mf::baseCodeOf(mf::Operator::ABO));
       }
@@ -893,11 +999,48 @@ void Encoder::generateBlob() {
     glyph->byteCodeSize = bytecodes.size() - glyph->entryPoint;
 
     if (options.verbose && options.verboseForCode == glyph->code) {
-      std::cout << "  Bytecode generated for glyph " << c2s(glyph->code)
-                << ":" << std::endl
+      std::cout << "  Bytecode generated for glyph " << c2s(glyph->code) << ":"
+                << std::endl
                 << "    Entry Point: " << glyph->entryPoint << std::endl;
       glyph->report("    ");
     }
+  }
+
+  for (int i = 0; i < 3; i++) {
+    bytecodes.push_back(mf::baseCodeOf(mf::Operator::ABO));
+  }
+
+  // Solve fragment duplications
+  for (const auto &glyphPair : glyphs) {
+    const GlyphObject &thisGlyph = glyphPair.second;
+    if (thisGlyph->fragDupSrcCode < 0) {
+      continue;
+    }
+    GlyphObject &otherGlyph = glyphs[thisGlyph->fragDupSrcCode];
+    while (otherGlyph->fragDupSrcCode >= 0) {
+      otherGlyph = glyphs[otherGlyph->fragDupSrcCode];
+    }
+    if (otherGlyph->entryPoint < 0 ||
+        otherGlyph->byteCodeSize == mf::DUMMY_ENTRY_POINT) {
+      throw std::runtime_error(
+          "Fragment duplication cannot solved "
+          "due to source glyph does not have valid entry point: " +
+          c2s(thisGlyph->code) + " --> " + c2s(otherGlyph->code));
+    }
+
+    if (options.verbose) {
+      int thisSize = thisGlyph->fragments.size();
+      int thisWidth = thisGlyph->width;
+      int otherSize = otherGlyph->fragments.size();
+      int otherWidth = otherGlyph->width;
+      bool complete = (otherSize == thisSize) && (otherWidth == thisWidth);
+      std::cout << "  Fragment duplication solved ("
+                << (complete ? "complete dup." : "partial dup.")
+                << "): " << c2s(thisGlyph->code) << " --> "
+                << c2s(otherGlyph->code) << std::endl;
+    }
+    thisGlyph->entryPoint = otherGlyph->entryPoint;
+    thisGlyph->byteCodeSize = otherGlyph->byteCodeSize;
   }
 
   bool dummyFragmentInserted = false;
@@ -909,15 +1052,6 @@ void Encoder::generateBlob() {
     std::cout << "  Fragment Table size is odd or zero, adding a dummy entry."
               << std::endl;
   }
-
-  std::vector<int> codes;
-  for (const auto &glyphPair : glyphs) {
-    codes.push_back(glyphPair.first);
-  }
-  std::sort(codes.begin(), codes.end());
-
-  int firstCode = codes.front();
-  int lastCode = codes.back();
 
   int maxGlyphWidth = 1;
   for (const auto &glyphPair : glyphs) {
@@ -981,8 +1115,7 @@ void Encoder::generateBlob() {
     if (missing || empty) {
       if (options.verbose) {
         if (missing) {
-          std::cout << "  Glyph " << c2s(code) << " is missing."
-                    << std::endl;
+          std::cout << "  Glyph " << c2s(code) << " is missing." << std::endl;
         } else if (empty) {
           std::cout << "  Glyph " << c2s(code) << " is empty, skipping."
                     << std::endl;
@@ -1051,5 +1184,7 @@ void Encoder::generateBlob() {
     std::cout << "  Blob size: " << blob.size() << " bytes" << std::endl;
   }
 }
+
+void Encoder::checkFragmentDuplicationSolvable() {}
 
 }  // namespace mamefont::mamec

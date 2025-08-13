@@ -19,6 +19,11 @@ class OperationClass {
   const int codeLength;
   const uint8_t code[3];
 
+  // Indicates that this operation is touching a barrier that was established to
+  // resolve fragment duplication.
+  bool afterBarrier = false;
+  bool beforeBarrier = false;
+
   OperationClass(mf::Operator op, const std::vector<frag_t> &output,
                  int additionalCost, int byte0 = 0x00, int byte1 = -1,
                  int byte2 = -1)

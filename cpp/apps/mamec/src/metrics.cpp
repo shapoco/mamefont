@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <iomanip>
+#include <iostream>
 
 #include "mamec/metrics.hpp"
 
@@ -10,8 +11,9 @@ static std::string compPerf(std::string label, int genFrags, int numInsts,
   std::ostringstream oss;
   char ratioSign = ratio < 0 ? '-' : ratio == 0 ? ' ' : '+';
   ratio = std::abs(ratio);
-  oss << s2s(label, 6) << ": " << i2s(genFrags) << " --> " << i2s(numInsts)
-      << " " << "(" << ratioSign << f2s(ratio, 5, 2) << "%)";
+  oss << s2s(label, 6) << ":" << i2s(genFrags, 5) << " -->"
+      << i2s(numInsts, 5) << " " << "(" << ratioSign << f2s(ratio, 5, 2)
+      << "%)";
   return oss.str();
 }
 
@@ -57,6 +59,10 @@ void dumpMetrics(const std::vector<uint8_t> &blob, std::ostream &os,
   uint8_t stride;
   std::vector<uint8_t> bufferVec(font.calcGlyphBufferSize(&stride) * 2);
   mf::GlyphBuffer glyphBuff(bufferVec.data(), stride);
+  std::map<int, int> progCntrReferences;
+  for (int i = 0; i < bcSize; i++) {
+    progCntrReferences[i] = 0;
+  }
 
   int numTotalPixels = 0;
   int totalGenFrags = 0;
@@ -78,17 +84,45 @@ void dumpMetrics(const std::vector<uint8_t> &blob, std::ostream &os,
     numTotalPixels += glyph.glyphWidth * font.glyphHeight();
     for (const auto &opPair : operators) {
       auto op = opPair.second;
-      int codeSize = stm.numInstsPerOperator[static_cast<int>(op)] * mf::instSizeOf(op);
-      int genFrags = stm.generatedFragsPerOperator[static_cast<int>(op)];
+      int codeSize =
+          stm.dbgNumInstsPerOpr[static_cast<int>(op)] * mf::instSizeOf(op);
+      int genFrags = stm.dbgGenFragsPerOpr[static_cast<int>(op)];
       codeSizePerOp[op] += codeSize;
       genFragsPerOp[op] += genFrags;
       totalCodeSize += codeSize;
       totalGenFrags += genFrags;
     }
+
+    for (int i = stm.dbgStartPc; i < stm.dbgLastPc; i++) {
+      progCntrReferences[i]++;
+    }
   }
   float totalCompRatio =
       100.0f * (totalCodeSize - totalGenFrags) / totalGenFrags;
   float memEff = (float)numTotalPixels / blob.size();
+
+  int numRemovedBytes = 0;
+  int numABO = 0;
+  int numUnexpNoRefs = 0;
+  for (auto pcPair : progCntrReferences) {
+    int pc = pcPair.first;
+    int count = pcPair.second;
+    if (count == 0) {
+      if (blob[byteCodeOffset + pc] == mf::baseCodeOf(mf::Operator::ABO)) {
+        numABO++;
+
+      } else {
+        numUnexpNoRefs++;
+        std::cerr << "*WARNING: Byte code at PC=" << pc
+                  << " is not an ABO instruction but has no references."
+                  << std::endl;
+      }
+    } else if (count >= 2) {
+      numRemovedBytes += count - 1;
+    }
+  }
+  float addedRatio = 100.0f * numABO / totalCodeSize;
+  float removedRatio = 100.0f * numRemovedBytes / totalCodeSize;
 
   auto fragShape = font.verticalFragment() ? "Vertical" : "Horizontal";
   auto bitOrder = font.msb1st() ? "MSB First" : "LSB First";
@@ -110,9 +144,9 @@ void dumpMetrics(const std::vector<uint8_t> &blob, std::ostream &os,
   os << indent << "  Header        : " << i2s(mf::FontHeader::SIZE, 4) << " Bytes\n";
   os << indent << "  Glyph Table   : " << i2s(gtSize, 4) << " Bytes (" << f2s(gtPerGlyph, 6, 2) << " Bytes/glyph)\n";
   os << indent << "  Frag. Table   : " << i2s(ftSize, 4) << " Bytes (" << f2s(ftUsage, 6, 2) << "% used)\n";
-  os << indent << "  Bytecodes     : " << i2s(bcSize, 4) << " Bytes (" << f2s(bcPerGlyph, 6, 2) << " Bytes/glyph)\n";
+  os << indent << "  Byte Codes    : " << i2s(bcSize, 4) << " Bytes (" << f2s(bcPerGlyph, 6, 2) << " Bytes/glyph)\n";
   os << indent << "  Total         : " << i2s(blob.size(), 4) << " Bytes (" << f2s(totalPerGlyph, 6, 2) << " Bytes/glyph)\n";
-  os << indent << "Compression Performance:\n";
+  os << indent << "Instruction Performance:\n";
   int totalDiff = totalGenFrags - totalCodeSize;
   for (const auto &opPair : operators) {
     auto op = opPair.second;
@@ -123,6 +157,10 @@ void dumpMetrics(const std::vector<uint8_t> &blob, std::ostream &os,
     os << indent << "  " << compPerf(mf::mnemonicOf(op), genFrags, numInsts, ratio) << "\n";
   }
   os << indent << "  " << compPerf("Total", totalGenFrags, totalCodeSize, totalCompRatio) << "\n";
+  os << indent << "Byte Code References:\n";
+  os << indent << "  Multiple References : " << i2s(numRemovedBytes, 3) << " Bytes\n";
+  os << indent << "  No Ref (ABO)        : " << i2s(numABO, 3) << " Bytes\n";
+  os << indent << "  No Ref (Unexpected) : " << i2s(numUnexpNoRefs, 3) << " Bytes\n";
   os << indent << "Memory Efficiency: " << f2s(memEff, 6, 3) << " px/Byte\n";
   // clang-format on
 }

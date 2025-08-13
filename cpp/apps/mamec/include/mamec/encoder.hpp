@@ -48,6 +48,7 @@ class Encoder {
   void generateBlob();
 
  private:
+  void detectFragmentDuplications(std::string indent);
   void generateInitialOperations(GlyphObject &glyph, bool verbose = false,
                                  std::string indent = "");
   void tryLUP(TryContext ctx);
@@ -62,10 +63,12 @@ class Encoder {
 
   void generateInitialFragTable();
   void generateFullFragTable();
-  void generateFragTableFromCountMap(std::map<frag_t, int> &countMap, int tableSize);
+  void generateFragTableFromCountMap(std::map<frag_t, int> &countMap,
+                                     int tableSize);
   void optimizeFragmentTable();
   void fixLUPIndex();
   void replaceLDItoLUP(bool verbose = false, std::string indent = "");
   int reverseLookup(frag_t frag);
+  void checkFragmentDuplicationSolvable();
 };
 }  // namespace mamefont::mamec

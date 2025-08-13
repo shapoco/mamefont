@@ -21,6 +21,15 @@ enum class FileType {
   MAME_HPP,
 };
 
+struct Duplication {
+  int sourceCode;
+  int offset;
+  int size;
+
+  Duplication()
+      : sourceCode(-1), offset(0), size(0) {}
+};
+
 extern size_t objectId;
 
 static inline size_t nextObjectId() { return objectId++; }
