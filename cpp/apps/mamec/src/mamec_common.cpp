@@ -37,9 +37,15 @@ std::string s2s(std::string s, int width) {
   return oss.str();
 }
 
-std::string byteToHexStr(uint8_t byte) {
+std::string u2x8(uint8_t value) {
   char buf[4];
-  snprintf(buf, sizeof(buf), "%02X", byte);
+  snprintf(buf, sizeof(buf), "%02X", value);
+  return buf;
+}
+
+std::string u2x16(uint16_t value) {
+  char buf[6];
+  snprintf(buf, sizeof(buf), "%04X", value);
   return buf;
 }
 
@@ -48,7 +54,7 @@ void dumpByteArray(const std::vector<uint8_t> &arr, const std::string &indent,
   size_t n = length < 0 ? arr.size() : length;
   for (size_t i = 0; i < n; i++) {
     if (i % 32 == 0) std::cout << indent;
-    std::cout << byteToHexStr(arr[offset + i]) << " ";
+    std::cout << u2x8(arr[offset + i]) << " ";
     if ((i + 1) % 32 == 0 || i == n - 1) std::cout << std::endl;
   }
 }
@@ -60,7 +66,7 @@ void dumpCStyleArrayContent(std::ostream &os, const std::vector<uint8_t> &arr,
   for (size_t i = 0; i < n; i++) {
     if (i % 16 == 0) os << indent;
     if (hex)
-      os << "0x" << byteToHexStr(arr[offset + i]);
+      os << "0x" << u2x8(arr[offset + i]);
     else
       os << std::dec << (int)arr[offset + i];
     if (i < n - 1 || endsWithComma) os << ",";

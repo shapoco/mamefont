@@ -7,12 +7,12 @@ namespace mamefont {
 struct AddrRule {
   int8_t lanesPerGlyph;  // Number of lanes per glyph
   int8_t fragsPerLane;   // Number of fragments per lane
-#ifdef MAMEFONT_HORIZONTAL_FRAGMENT_ONLY
+#ifdef MAMEFONT_HORI_FRAG_ONLY
   static constexpr uint8_t laneStride = 1;
 #else
   frag_index_t laneStride;  // Stride to next lane in bytes
 #endif
-#ifdef MAMEFONT_VERTICAL_FRAGMENT_ONLY
+#ifdef MAMEFONT_VERT_FRAG_ONLY
   static constexpr uint8_t fragStride = 1;
 #else
   frag_index_t fragStride;  // Stride to next fragment in bytes

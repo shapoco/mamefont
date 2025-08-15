@@ -9,12 +9,14 @@
 namespace mamefont::mamec {
 
 struct VecRef {
-  const std::vector<frag_t> &fragments;
+  const std::vector<frag_t> &vector;
   const size_t start;
   const size_t size;
+  const mf::PixelFormat bpp;
 
-  VecRef(const std::vector<frag_t> &frags, size_t start, size_t end)
-      : fragments(frags), start(start), size(end - start) {
+  VecRef(const std::vector<frag_t> &frags, size_t start, size_t end,
+         mf::PixelFormat bpp)
+      : vector(frags), start(start), size(end - start), bpp(bpp) {
     if (start < 0 || start >= frags.size()) {
       throw std::out_of_range("Start index " + std::to_string(start) +
                               " is out of range in VecRef()");
@@ -30,8 +32,8 @@ struct VecRef {
     }
   }
 
-  VecRef(const std::vector<frag_t> &frags)
-      : fragments(frags), start(0), size(frags.size()) {}
+  VecRef(const std::vector<frag_t> &frags, mf::PixelFormat bpp)
+      : vector(frags), start(0), size(frags.size()), bpp(bpp) {}
 
   inline int normalizeIndex(int i) const {
     if (i < 0) i = size + i;
@@ -44,7 +46,7 @@ struct VecRef {
   }
 
   const inline frag_t &operator[](int i) const {
-    return fragments[start + normalizeIndex(i)];
+    return vector[start + normalizeIndex(i)];
   }
 
   VecRef slice(int start, int end) const {
@@ -58,19 +60,19 @@ struct VecRef {
           "Slice range out of bounds: " + std::to_string(start) + " to " +
           std::to_string(end));
     }
-    return VecRef(fragments, this->start + start, this->start + end);
+    return VecRef(vector, this->start + start, this->start + end, bpp);
   }
 
   inline std::vector<frag_t> toVector(uint8_t cpxFlag = 0) const {
     std::vector<frag_t> result;
     result.reserve(size);
     bool byteReverse = mf::CPX::ByteReverse::read(cpxFlag);
-    bool bitReverse = mf::CPX::BitReverse::read(cpxFlag);
+    bool pixelReverse = mf::CPX::PixelReverse::read(cpxFlag);
     bool inverse = mf::CPX::Inverse::read(cpxFlag);
     for (size_t i = 0; i < size; ++i) {
       int iSrc = byteReverse ? (size - 1 - i) : i;
       frag_t frag = (*this)[iSrc];
-      if (bitReverse) frag = mf::reverseBits(frag);
+      if (pixelReverse) frag = mf::reversePixels(frag, bpp);
       if (inverse) frag = ~frag;
       result.push_back(frag);
     }
@@ -89,7 +91,7 @@ static inline bool maskedEqual(const VecRef &a, const VecRef &b,
   bool byteReverse = CPX::ByteReverse::read(cpxFlags);
   for (size_t i = 0; i < a.size; ++i) {
     int ia = byteReverse ? (a.size - 1 - i) : i;
-    if (!maskedEqual(a[ia], b[i], mask[i], cpxFlags)) return false;
+    if (!maskedEqual(a[ia], b[i], mask[i], cpxFlags, a.bpp)) return false;
   }
   return true;
 }

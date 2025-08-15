@@ -53,6 +53,10 @@ BitmapFontClass::BitmapFontClass(const std::string &bmpPathStr) {
     if (dims.find(Dimension::WEIGHT) != dims.end()) {
       weight = dims[Dimension::WEIGHT];
     }
+
+    if (dims.find(Dimension::BITS_PER_PIXEL) != dims.end()) {
+      bitsPerPixel = dims[Dimension::BITS_PER_PIXEL];
+    }
   }
 
   // parse JSON file
@@ -83,6 +87,10 @@ BitmapFontClass::BitmapFontClass(const std::string &bmpPathStr) {
       }
     }
 
+    if (jsonObj.contains("bits_per_pixel")) {
+      jsonObj.at("bits_per_pixel").get_to(bitsPerPixel);
+    }
+
     if (jsonObj.contains("dimensions")) {
       const auto &dimsObj = jsonObj.at("dimensions");
 
@@ -110,6 +118,10 @@ BitmapFontClass::BitmapFontClass(const std::string &bmpPathStr) {
 
   if (ySpacing == DIMENSION_INVALID) {
     ySpacing = std::ceil((bodySize - ascenderSpacing) * 1.2 - bodySize);
+  }
+
+  if (bitsPerPixel == DIMENSION_INVALID) {
+    bitsPerPixel = 1;
   }
 
   // extract glyphs
@@ -214,6 +226,9 @@ std::unordered_map<Dimension, int> parseDimensionIdentifier(
           break;
         case 'w':
           dim = Dimension::WEIGHT;
+          break;
+        case 'g':
+          dim = Dimension::BITS_PER_PIXEL;
           break;
         default:
           throw std::runtime_error("Unknown dimension identifier: '" +

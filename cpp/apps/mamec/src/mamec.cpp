@@ -22,6 +22,7 @@ static constexpr char OPT_NO_CPX = 0x82;
 static constexpr char OPT_NO_SFI = 0x83;
 static constexpr char OPT_FORCE_ZERO_PADDING = 0x84;
 static constexpr char OPT_VERBOSE = 0x85;
+static constexpr char OPT_SELF_TEST = 0x86;
 
 static struct option long_opts[] = {
     {"input", required_argument, 0, OPT_INPUT},
@@ -32,6 +33,7 @@ static struct option long_opts[] = {
     {"no_sfi", no_argument, 0, OPT_NO_SFI},
     {"force_zero_padding", no_argument, 0, OPT_FORCE_ZERO_PADDING},
     {"verbose", optional_argument, 0, OPT_VERBOSE},
+    {"self_test", no_argument, 0, OPT_SELF_TEST},
     {0, 0, 0, 0},
 };
 
@@ -46,6 +48,7 @@ int main(int argc, char *argv[]) {
   bool argVerifyOnly = false;
   std::string argVerboseForCodeStr;
   int argVerboseForCode = -1;
+  bool argSelfTest = false;
 
   char short_opts[256];
   snprintf(short_opts, sizeof(short_opts), "%c:%c:%c:%c", OPT_INPUT, OPT_OUTPUT,
@@ -79,6 +82,9 @@ int main(int argc, char *argv[]) {
         argVerbose = true;
         argVerboseForCodeStr = optarg ? optarg : "";
         break;
+      case OPT_SELF_TEST:
+        argSelfTest = true;
+        break;
       case '?':
         return 1;
     }
@@ -105,16 +111,16 @@ int main(int argc, char *argv[]) {
   EncodeOptions options;
   if (argEncoding == "HL") {
     options.verticalFrag = false;
-    options.msb1st = false;
+    options.farPixelFirst = false;
   } else if (argEncoding == "HM") {
     options.verticalFrag = false;
-    options.msb1st = true;
+    options.farPixelFirst = true;
   } else if (argEncoding == "VL") {
     options.verticalFrag = true;
-    options.msb1st = false;
+    options.farPixelFirst = false;
   } else if (argEncoding == "VM") {
     options.verticalFrag = true;
-    options.msb1st = true;
+    options.farPixelFirst = true;
   } else {
     fprintf(stderr, "Unknown encoding: %s\n", argEncoding.c_str());
     return 1;
@@ -132,6 +138,10 @@ int main(int argc, char *argv[]) {
     std::cout << "  Encoding: " << argEncoding.c_str() << std::endl;
     std::cout << "  No CPX  : " << (argNoCPX ? "true" : "false") << std::endl;
     std::cout << "  No SFI  : " << (argNoSFI ? "true" : "false") << std::endl;
+  }
+
+  if (argSelfTest) {
+    runSelfTests();
   }
 
   FileType outputFileType = FileType::NONE;

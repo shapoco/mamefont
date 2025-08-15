@@ -82,7 +82,7 @@ Operation makeCPX(int offset, int length, uint8_t cpxFlags,
   arg3 |= cpxFlags;  // Include byte reverse, bit reverse, and inverse
 
   int addCost = 0;
-  if (mf::CPX::BitReverse::read(cpxFlags)) addCost++;
+  if (mf::CPX::PixelReverse::read(cpxFlags)) addCost++;
   if (mf::CPX::Inverse::read(cpxFlags)) addCost++;
   if (mf::CPX::ByteReverse::read(cpxFlags)) addCost++;
 

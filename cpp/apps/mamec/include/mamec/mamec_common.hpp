@@ -26,8 +26,7 @@ struct Duplication {
   int offset;
   int size;
 
-  Duplication()
-      : sourceCode(-1), offset(0), size(0) {}
+  Duplication() : sourceCode(-1), offset(0), size(0) {}
 };
 
 extern size_t objectId;
@@ -35,14 +34,18 @@ extern size_t objectId;
 static inline size_t nextObjectId() { return objectId++; }
 
 static inline bool maskedEqual(frag_t a, frag_t b, frag_t mask,
-                               uint8_t cpxFlags = 0) {
-  if (mf::CPX::BitReverse::read(cpxFlags)) {
-    a = mf::reverseBits(a);
+                               uint8_t cpxFlags, mf::PixelFormat bpp) {
+  if (mf::CPX::PixelReverse::read(cpxFlags)) {
+    a = mf::reversePixels(a, bpp);
   }
   if (mf::CPX::Inverse::read(cpxFlags)) {
     a = ~a;
   }
   return ((a ^ b) & mask) == 0;
+}
+
+static inline bool maskedEqual(frag_t a, frag_t b, frag_t mask) {
+  return maskedEqual(a, b, mask, 0, mf::PixelFormat::BW_1BIT);
 }
 
 static inline constexpr int baseCostOf(mf::Operator op) {
@@ -75,7 +78,8 @@ std::string f2s(float value, int width = 5, int precision = 2);
 std::string c2s(int code);
 std::string s2s(std::string s, int width = 4);
 static inline std::string yn(bool value) { return value ? "Yes" : "No"; }
-std::string byteToHexStr(uint8_t byte);
+std::string u2x8(uint8_t byte);
+std::string u2x16(uint16_t value);
 void dumpByteArray(const std::vector<uint8_t> &arr, const std::string &indent,
                    int offset = 0, int length = -1);
 void dumpCStyleArrayContent(std::ostream &os, const std::vector<uint8_t> &arr,

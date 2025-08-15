@@ -51,22 +51,26 @@ class StateMachine {
     this->bytecode = font.blob + font.byteCodeOffset();
     this->glyphHeight = font.header.glyphHeight;
 
-#ifdef MAMEFONT_HORIZONTAL_FRAGMENT_ONLY
+#ifdef MAMEFONT_HORI_FRAG_ONLY
     bool verticalFrag = false;
-#elif defined(MAMEFONT_VERTICAL_FRAGMENT_ONLY)
+#elif defined(MAMEFONT_VERT_FRAG_ONLY)
     bool verticalFrag = true;
 #else
     bool verticalFrag = flags.verticalFragment();
 #endif
 
     if (verticalFrag) {
-      rule.lanesPerGlyph = (glyphHeight + 7) / 8;
-#ifndef MAMEFONT_VERTICAL_FRAGMENT_ONLY
+      if (flags.bitsPerPixel() == PixelFormat::BW_1BIT) {
+        rule.lanesPerGlyph = (glyphHeight + 7) / 8;
+      } else {
+        rule.lanesPerGlyph = (glyphHeight + 3) / 4;
+      }
+#ifndef MAMEFONT_VERT_FRAG_ONLY
       rule.fragStride = 1;
 #endif
     } else {
       rule.fragsPerLane = glyphHeight;
-#ifndef MAMEFONT_HORIZONTAL_FRAGMENT_ONLY
+#ifndef MAMEFONT_HORI_FRAG_ONLY
       rule.laneStride = 1;
 #endif
     }
@@ -75,9 +79,9 @@ class StateMachine {
   Status run(Glyph &glyph, const GlyphBuffer &buff) {
     buffData = buff.data;
 
-#ifdef MAMEFONT_HORIZONTAL_FRAGMENT_ONLY
+#ifdef MAMEFONT_HORI_FRAG_ONLY
     bool verticalFrag = false;
-#elif defined(MAMEFONT_VERTICAL_FRAGMENT_ONLY)
+#elif defined(MAMEFONT_VERT_FRAG_ONLY)
     bool verticalFrag = true;
 #else
     bool verticalFrag = flags.verticalFragment();
@@ -86,14 +90,19 @@ class StateMachine {
     int8_t glyphWidth = glyph.glyphWidth;
     if (verticalFrag) {
       rule.fragsPerLane = glyphWidth;
-#ifndef MAMEFONT_HORIZONTAL_FRAGMENT_ONLY
+#ifndef MAMEFONT_HORI_FRAG_ONLY
       rule.laneStride = buff.stride;
 #endif
     } else {
-#ifndef MAMEFONT_VERTICAL_FRAGMENT_ONLY
+#ifndef MAMEFONT_VERT_FRAG_ONLY
       rule.fragStride = buff.stride;
 #endif
-      rule.lanesPerGlyph = (glyphWidth + 7) / 8;
+
+      if (flags.bitsPerPixel() == PixelFormat::BW_1BIT) {
+        rule.lanesPerGlyph = (glyphWidth + 7) / 8;
+      } else {
+        rule.lanesPerGlyph = (glyphWidth + 3) / 4;
+      }
     }
     numLanesToGlyphEnd = rule.lanesPerGlyph;
 
@@ -313,7 +322,7 @@ class StateMachine {
     bool postSet = SFI::PostSet::read(sfiFlags);
     bool preShift = SFI::PreShift::read(sfiFlags);
 
-    MAMEFONT_BEFORE_OP(Operator::SFI, 1,
+    MAMEFONT_BEFORE_OP(Operator::SFI, 2,
                        "(dir=%c, period=%d, shift1st=%d, postOp=%c, rpt=%d)",
                        (right ? 'R' : 'L'), (int)period, (preShift ? 1 : 0),
                        (postSet ? 'S' : 'C'), (int)rpt);
@@ -326,12 +335,27 @@ class StateMachine {
   }
 #endif
 
+#if defined(MAMEFONT_1BPP_ONLY)
+  using shift_state_t = frag_t;
+#else
+  using shift_state_t = uint16_t;
+
+#endif
+
 #ifndef MAMEFONT_NO_SFI
   MAMEFONT_NOINLINE
 #endif
   void shiftCore(uint8_t sfiFlags, uint8_t size, uint8_t rpt, uint8_t period) {
     bool right = SFI::Right::read(sfiFlags);
-    frag_t modifier = getRightMask(right ? (8 - size) : size);
+    bool bpp2 = (flags.bitsPerPixel() != PixelFormat::BW_1BIT);
+    uint8_t stateWidth = bpp2 ? 12 : 8;
+
+#if defined(MAMEFONT_1BPP_ONLY)
+    shift_state_t modifier = getRightMaskU8(right ? (8 - size) : size);
+#else
+    shift_state_t modifier =
+        getRightMaskU16(right ? (stateWidth - size) : size);
+#endif
     if (right) modifier = ~modifier;
 
     bool postSet = SFI::PostSet::read(sfiFlags);
@@ -345,22 +369,36 @@ class StateMachine {
       timer = period;
     }
 
+    shift_state_t state;
+
+    if (bpp2) {
+      state = encodeShiftState2bpp(lastFragment, right, postSet);
+    } else {
+      state = lastFragment;
+    }
+
     do {
       if (--timer == 0) {
         rpt--;
         timer = period;
         if (right) {
-          lastFragment >>= size;
+          state >>= size;
         } else {
-          lastFragment <<= size;
+          state <<= size;
         }
         if (postSet) {
-          lastFragment |= modifier;
+          state |= modifier;
         } else {
-          lastFragment &= modifier;
+          state &= modifier;
         }
       }
-      write(lastFragment);
+
+      if (bpp2) {
+        write(decodeShiftState2bpp(state));
+      } else {
+        write(state);
+      }
+
     } while (rpt != 0);
   }
 
@@ -390,19 +428,19 @@ class StateMachine {
   void CPX(uint8_t inst) {
     uint8_t byte2 = readBlobU8(bytecode + (programCounter + 0));
     uint8_t byte3 = readBlobU8(bytecode + (programCounter + 1));
-    uint8_t cpxFlags = byte3 & (CPX::ByteReverse::MASK | CPX::BitReverse::MASK |
+    uint8_t cpxFlags = byte3 & (CPX::ByteReverse::MASK | CPX::PixelReverse::MASK |
                                 CPX::Inverse::MASK);
     uint8_t length = CPX::Length::read(byte3);
     frag_index_t offset =
         CPX::Offset::read((static_cast<uint16_t>(byte3) << 8) | byte2);
 
     bool byteReverse = CPX::ByteReverse::read(cpxFlags);
-    bool bitReverse = CPX::BitReverse::read(cpxFlags);
+    bool pixelReverse = CPX::PixelReverse::read(cpxFlags);
     bool inverse = CPX::Inverse::read(cpxFlags);
     MAMEFONT_BEFORE_OP(Operator::CPX, 3,
                        "(ofst=%d, len=%d, byteRev=%d, bitRev=%d, inv=%d)",
                        (int)offset, (int)length, (int)byteReverse,
-                       (int)bitReverse, (int)inverse);
+                       (int)pixelReverse, (int)inverse);
 
     if (byteReverse) offset -= length;
     copyCore(cpxFlags, -offset, length);
@@ -427,7 +465,8 @@ class StateMachine {
         frag = readPostIncr(readCursor);
       }
 #ifndef MAMEFONT_NO_CPX
-      if (CPX::BitReverse::read(cpxFlags)) frag = reverseBits(frag);
+      if (CPX::PixelReverse::read(cpxFlags))
+        frag = reversePixels(frag, flags.bitsPerPixel());
       if (CPX::Inverse::read(cpxFlags)) frag = ~frag;
 #endif
       write(frag);

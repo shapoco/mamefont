@@ -11,27 +11,17 @@ class Font {
 
   Font(const uint8_t *blob) : header(blob), blob(blob) {}
 
-  MAMEFONT_NOINLINE frag_index_t calcGlyphBufferSize(const Glyph *glyph,
-                                                     uint8_t *stride) const {
-    uint8_t w = (header.flags.proportional() && glyph) ? glyph->glyphWidth
-                                                       : header.maxGlyphWidth;
-    uint8_t h = header.glyphHeight;
-    bool verticalFrag = header.flags.verticalFragment();
-    uint8_t viewport = verticalFrag ? h : w;
-    uint8_t trackLength = verticalFrag ? w : h;
-    uint8_t numTracks = (uint8_t)(viewport + 7) / 8;
-    if (stride) {
-      *stride = verticalFrag ? trackLength : numTracks;
-    }
-    return numTracks * trackLength;
-  }
-
   MAMEFONT_INLINE uint8_t formatVersion() const { return header.formatVersion; }
   MAMEFONT_INLINE FontFlags flags() const { return header.flags; }
   MAMEFONT_INLINE bool verticalFragment() const {
     return header.flags.verticalFragment();
   }
-  MAMEFONT_INLINE bool msb1st() const { return header.flags.msb1st(); }
+  MAMEFONT_INLINE bool farPixelFirst() const {
+    return header.flags.farPixelFirst();
+  }
+  MAMEFONT_INLINE PixelFormat bitsPerPixel() const {
+    return header.flags.bitsPerPixel();
+  }
   MAMEFONT_INLINE bool largeFont() const { return header.flags.largeFont(); }
   MAMEFONT_INLINE bool proportional() const {
     return header.flags.proportional();
@@ -51,6 +41,22 @@ class Font {
   MAMEFONT_INLINE uint8_t glyphHeight() const { return header.glyphHeight; }
   MAMEFONT_INLINE uint8_t xMonoSpacing() const { return header.xMonoSpacing; }
   MAMEFONT_INLINE uint8_t ySpacing() const { return header.ySpacing; }
+
+  MAMEFONT_NOINLINE frag_index_t calcGlyphBufferSize(const Glyph *glyph,
+                                                     uint8_t *stride) const {
+    uint8_t w = (header.flags.proportional() && glyph) ? glyph->glyphWidth
+                                                       : header.maxGlyphWidth;
+    uint8_t h = header.glyphHeight;
+    bool bpp1 = (bitsPerPixel() == PixelFormat::BW_1BIT);
+    bool verticalFrag = header.flags.verticalFragment();
+    uint8_t viewport = verticalFrag ? h : w;
+    uint8_t trackLength = verticalFrag ? w : h;
+    uint8_t numTracks = bpp1 ? ((viewport + 7) / 8) : ((viewport + 3) / 4);
+    if (stride) {
+      *stride = verticalFrag ? trackLength : numTracks;
+    }
+    return numTracks * trackLength;
+  }
 
   MAMEFONT_INLINE frag_index_t calcGlyphBufferSize(uint8_t *stride) const {
     return calcGlyphBufferSize(nullptr, stride);

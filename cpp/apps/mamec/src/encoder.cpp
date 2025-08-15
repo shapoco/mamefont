@@ -29,13 +29,16 @@ void Encoder::addFont(const BitmapFont &bmpFont) {
 
   glyphHeight = bmpFont->bodySize;
   ySpacing = bmpFont->ySpacing;
+  pixelFormat = (bmpFont->bitsPerPixel == 1) ? PixelFormat::BW_1BIT
+                                             : PixelFormat::GRAY_2BIT;
   for (const auto &bmpGlyph : bmpFont->glyphs) {
     addGlyph(bmpFont, bmpGlyph);
   }
 }
 
 void Encoder::addGlyph(const BitmapFont &bmpFont, const BitmapGlyph &bmpGlyph) {
-  auto frags = bmpGlyph->bmp->toFragments(options.verticalFrag, options.msb1st);
+  auto frags = bmpGlyph->bmp->toFragments(options.verticalFrag,
+                                          options.farPixelFirst, pixelFormat);
 
   std::vector<frag_t> compareMask;
   int numFrags = frags.size();
@@ -45,10 +48,12 @@ void Encoder::addGlyph(const BitmapFont &bmpFont, const BitmapGlyph &bmpGlyph) {
     int h = bmpGlyph->bmp->height;
     int viewPort = options.verticalFrag ? h : w;
     int trackLength = options.verticalFrag ? w : h;
-    int numTracks = (viewPort + 7) / 8;
-    int maskWidth = viewPort - (numTracks - 1) * 8;
+    int bpp = mf::getBitsPerPixel(pixelFormat);
+    int ppf = mf::getPixelsPerFrag(pixelFormat);
+    int numTracks = (viewPort + (ppf - 1)) / ppf;
+    int maskWidth = (viewPort - (numTracks - 1) * ppf) * bpp;
     frag_t lastTrackMask = (1 << maskWidth) - 1;
-    if (options.msb1st) {
+    if (options.farPixelFirst) {
       lastTrackMask <<= (8 - maskWidth);
     }
     for (int i = numFrags - trackLength; i < numFrags; i++) {
@@ -58,7 +63,7 @@ void Encoder::addGlyph(const BitmapFont &bmpFont, const BitmapGlyph &bmpGlyph) {
 
   glyphs[bmpGlyph->code] = std::make_shared<GlyphObjectClass>(
       bmpGlyph->code, frags, compareMask, bmpGlyph->width, bmpFont->bodySize,
-      options.verticalFrag, options.msb1st,
+      options.verticalFrag, options.farPixelFirst,
       bmpFont->defaultXSpacing - bmpGlyph->leftAntiSpace,
       bmpGlyph->leftAntiSpace);
 }
@@ -158,8 +163,10 @@ void Encoder::detectFragmentDuplications(std::string indent) {
       if (otherSize < thisSize) continue;
       if (otherSize == thisSize && otherCode > thisCode) continue;
 
-      VecRef otherPart(otherFrags, 0, thisSize);
-      if (!maskedEqual(thisFrags, otherPart, thisGlyph->compareMask)) {
+      VecRef thisPart(thisFrags, pixelFormat);
+      VecRef otherPart(otherFrags, 0, thisSize, pixelFormat);
+      VecRef compMask(thisGlyph->compareMask, pixelFormat);
+      if (!maskedEqual(thisPart, otherPart, compMask)) {
         continue;
       }
 
@@ -218,6 +225,11 @@ void Encoder::generateInitialOperations(GlyphObject &glyph, bool verbose,
                                         std::string indent) {
   int numFrags = glyph->fragments.size();
 
+  if (verbose) {
+    std::cout << indent << "Fragments:" << std::endl;
+    dumpByteArray(glyph->fragments, indent + "  ");
+  }
+
   std::vector<std::vector<int>> scoreBoard(numFrags + 1,
                                            std::vector<int>(256, DUMMY_COST));
 
@@ -245,8 +257,8 @@ void Encoder::generateInitialOperations(GlyphObject &glyph, bool verbose,
       break;
     }
 
-    VecRef future(glyph->fragments, curr->pos, numFrags);
-    VecRef mask(glyph->compareMask, curr->pos, numFrags);
+    VecRef future(glyph->fragments, curr->pos, numFrags, pixelFormat);
+    VecRef mask(glyph->compareMask, curr->pos, numFrags, pixelFormat);
 
     std::vector<Operation> oprs;
     TryContext ctx{glyph->code, oprs, curr, future, mask};
@@ -459,35 +471,71 @@ bool Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
 
   std::vector<frag_t> output;
 
-  frag_t modifier = (1 << size) - 1;
-  if (right) modifier <<= (8 - size);
+  int stateWidth;
+  switch (pixelFormat) {
+    case mf::PixelFormat::BW_1BIT:
+      stateWidth = 8;
+      break;
+    case mf::PixelFormat::GRAY_2BIT:
+      stateWidth = 12;
+      break;
+    default:
+      throw std::invalid_argument("Unsupported pixel format");
+  }
+
+  uint16_t shiftMask = (1 << stateWidth) - 1;
+
+  uint16_t modifier = (1 << size) - 1;
+  if (right) modifier <<= (stateWidth - size);
   if (!postSet) modifier = ~modifier;
 
-  frag_t work = ctx.state->lastFrag;
+  frag_t workFrag = ctx.state->lastFrag;
+  uint16_t state;
+  switch (pixelFormat) {
+    case mf::PixelFormat::BW_1BIT:
+      state = workFrag;
+      break;
+    case mf::PixelFormat::GRAY_2BIT:
+      state = Encoder::encodeShiftState2bpp(workFrag, right, postSet);
+      break;
+    default:
+      throw std::invalid_argument("Unsupported pixel format");
+  }
   bool changeDetected = false;
 
   int offset = 0;
   for (int rpt = (preShift ? 0 : 1); rpt <= rptMax; rpt++) {
     int startPhase = (rpt == 0 && preShift) ? (period - 1) : 0;
     for (int phase = startPhase; phase < period; phase++) {
-      frag_t lastWork = work;
+      frag_t lastFrag = workFrag;
       if (phase == period - 1) {
         if (right) {
-          work >>= size;
+          state = (state >> size) & shiftMask;
         } else {
-          work <<= size;
+          state = (state << size) & shiftMask;
         }
         if (postSet) {
-          work |= modifier;
+          state |= modifier;
         } else {
-          work &= modifier;
+          state &= modifier;
         }
       }
-      if (!maskedEqual(lastWork, work, ctx.compareMask[offset])) {
+      switch (pixelFormat) {
+        case mf::PixelFormat::BW_1BIT:
+          workFrag = state;
+          break;
+        case mf::PixelFormat::GRAY_2BIT:
+          workFrag = Encoder::decodeShiftState2bpp(state);
+          break;
+        default:
+          throw std::invalid_argument("Unsupported pixel format");
+      }
+
+      if (!maskedEqual(lastFrag, workFrag, ctx.compareMask[offset])) {
         changeDetected = true;
       }
-      if (maskedEqual(work, ctx.future[offset], ctx.compareMask[offset])) {
-        output.push_back(work);
+      if (maskedEqual(workFrag, ctx.future[offset], ctx.compareMask[offset])) {
+        output.push_back(workFrag);
         offset++;
       } else {
         return false;
@@ -515,7 +563,7 @@ void Encoder::tryCPY(TryContext ctx) {
     FOR_FIELD_VALUES(mf::CPY::Offset, offset) {
       int iPastFrom = pastBuff.size() - offset - length;
       int iPastTo = iPastFrom + length;
-      VecRef pastRef(pastBuff, iPastFrom, iPastTo);
+      VecRef pastRef(pastBuff, iPastFrom, iPastTo, pixelFormat);
       VecRef futureRef = ctx.future.slice(0, length);
       VecRef maskRef = ctx.compareMask.slice(0, length);
 
@@ -559,14 +607,14 @@ void Encoder::tryCPX(TryContext ctx) {
       if (iPastTo > pastBuff.size()) continue;
       if (iPastFrom < -length) break;
 
-      VecRef pastRef(pastBuff, iPastFrom, iPastTo);
+      VecRef pastRef(pastBuff, iPastFrom, iPastTo, pixelFormat);
 
       for (bool byteReverse : {false, true}) {
-        for (bool bitReverse : {false, true}) {
+        for (bool pixelReverse : {false, true}) {
           for (bool inverse : {false, true}) {
             uint8_t cpxFlags = 0;
             cpxFlags |= mf::CPX::ByteReverse::place(byteReverse);
-            cpxFlags |= mf::CPX::BitReverse::place(bitReverse);
+            cpxFlags |= mf::CPX::PixelReverse::place(pixelReverse);
             cpxFlags |= mf::CPX::Inverse::place(inverse);
             if (maskedEqual(pastRef, futureRef, maskRef, cpxFlags)) {
               ctx.oprs.push_back(makeCPX(offset, length, cpxFlags,
@@ -787,8 +835,8 @@ void Encoder::fixLUPIndex() {
           glyph->replaceOperation(i, makeLDI(opr->output[0], 0));
           std::cerr << "  *WARNING: LUP unexpectedly replaced with LDI for "
                     << c2s(glyph->code) << ", since fragment 0x"
-                    << byteToHexStr(opr->output[0])
-                    << " not found in fragment table." << std::endl;
+                    << u2x8(opr->output[0]) << " not found in fragment table."
+                    << std::endl;
         }
       }
     }
@@ -1065,9 +1113,11 @@ void Encoder::generateBlob() {
 
   uint8_t fontFlags = 0;
   fontFlags |= mf::FontFlags::VerticalFragment::place(options.verticalFrag);
-  fontFlags |= mf::FontFlags::Msb1st::place(options.msb1st);
+  fontFlags |= mf::FontFlags::FarPixelFirst::place(options.farPixelFirst);
   fontFlags |= mf::FontFlags::LargeFont::place(largeFont);
   fontFlags |= mf::FontFlags::Proportional::place(proportional);
+  fontFlags |=
+      mf::FontFlags::PixelFormatField::place(static_cast<uint8_t>(pixelFormat));
 
   blob.clear();
 

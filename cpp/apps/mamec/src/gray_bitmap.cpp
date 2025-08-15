@@ -8,6 +8,7 @@
 namespace mamefont::mamec {
 
 static void rgb2hsv(int r, int g, int b, int *h, int *s, int *v);
+static frag_t encodePixel(int16_t value, int iPixel, mf::PixelFormat bpp);
 
 GrayBitmapClass::GrayBitmapClass(std::vector<int16_t> &data, int width,
                                  int height)
@@ -69,6 +70,11 @@ int16_t GrayBitmapClass::get(int x, int y, int16_t defaultColor) const {
   }
 }
 
+uint8_t GrayBitmapClass::get(int x, int y, mf::PixelFormat fmt,
+                             int16_t defaultColor) const {
+  return encodePixel(get(x, y, defaultColor), 0, fmt);
+}
+
 std::shared_ptr<GrayBitmapClass> GrayBitmapClass::crop(int x, int y, int w,
                                                        int h) const {
   if (x < 0 || y < 0 || x + w > width || y + h > height) {
@@ -87,37 +93,36 @@ std::shared_ptr<GrayBitmapClass> GrayBitmapClass::crop(int x, int y, int w,
 }
 
 std::vector<frag_t> GrayBitmapClass::toFragments(bool verticalFrag,
-                                                     bool msb1st) const {
+                                                 bool farPixelFirst,
+                                                 mf::PixelFormat bpp) const {
+  int ppf = mf::getPixelsPerFrag(bpp);
+
   std::vector<frag_t> frags;
   if (verticalFrag) {
-    frags.resize(width * ((height + 7) / 8));
+    frags.resize(width * ((height + (ppf - 1)) / ppf));
 
-    for (int y_coarse = 0; y_coarse < height; y_coarse += 8) {
-      frag_t *destPtr = &frags[y_coarse / 8 * width];
+    for (int yCoarse = 0; yCoarse < height; yCoarse += ppf) {
+      frag_t *destPtr = &frags[yCoarse / ppf * width];
       for (int x = 0; x < width; ++x) {
         frag_t frag = 0;
-        for (int y_fine = 0; y_fine < 8; ++y_fine) {
-          int y = y_coarse + y_fine;
-          int i_bit = msb1st ? (7 - y_fine) : y_fine;
-          if (get(x, y, 0) >= 128) {
-            frag |= (1 << i_bit);
-          }
+        for (int yFine = 0; yFine < ppf; ++yFine) {
+          int y = yCoarse + yFine;
+          int iPixel = farPixelFirst ? (ppf - 1 - yFine) : yFine;
+          frag |= encodePixel(get(x, y, 0), iPixel, bpp);
         }
         *(destPtr++) = frag;
       }
     }
   } else {
-    frags.resize(height * ((width + 7) / 8));
-    for (int x_coarse = 0; x_coarse < width; x_coarse += 8) {
-      frag_t *destPtr = &frags[x_coarse / 8 * height];
+    frags.resize(height * ((width + (ppf - 1)) / ppf));
+    for (int xCoarse = 0; xCoarse < width; xCoarse += ppf) {
+      frag_t *destPtr = &frags[xCoarse / ppf * height];
       for (int y = 0; y < height; ++y) {
         frag_t frag = 0;
-        for (int x_fine = 0; x_fine < 8; ++x_fine) {
-          int x = x_coarse + x_fine;
-          int i_bit = msb1st ? (7 - x_fine) : x_fine;
-          if (get(x, y, 0) >= 128) {
-            frag |= (1 << i_bit);
-          }
+        for (int xFine = 0; xFine < ppf; ++xFine) {
+          int x = xCoarse + xFine;
+          int iPixel = farPixelFirst ? (ppf - 1 - xFine) : xFine;
+          frag |= encodePixel(get(x, y, 0), iPixel, bpp);
         }
         *(destPtr++) = frag;
       }
@@ -141,6 +146,17 @@ static void rgb2hsv(int r, int g, int b, int *h, int *s, int *v) {
   }
   *s = dr;
   *v = mx;
+}
+
+static frag_t encodePixel(int16_t value, int iPixel, mf::PixelFormat bpp) {
+  if (bpp == mf::PixelFormat::BW_1BIT) {
+    return (value >= 128) ? (1 << iPixel) : 0;
+  } else if (bpp == mf::PixelFormat::GRAY_2BIT) {
+    value = (value < 64) ? 0 : (value < 160) ? 1 : (value < 224) ? 2 : 3;
+    return value << (iPixel * 2);
+  } else {
+    throw std::invalid_argument("Unsupported bits per pixel");
+  }
 }
 
 }  // namespace mamefont::mamec

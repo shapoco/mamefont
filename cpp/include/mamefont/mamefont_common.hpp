@@ -40,7 +40,6 @@ static MAMEFONT_INLINE uint16_t readBlobU16(const uint8_t *ptr) {
 }
 
 static constexpr uint16_t DUMMY_ENTRY_POINT = 0xffff;
-static constexpr uint8_t FRAGMENT_SIZE = 8;
 static constexpr uint8_t MAX_FRAGMENT_TABLE_SIZE = 64;
 
 enum class Status : int8_t {
@@ -98,6 +97,21 @@ enum class Operator : int8_t {
   ABO,
   COUNT,
 };
+
+enum class PixelFormat : uint8_t {
+  BW_1BIT = 0,
+  GRAY_2BIT = 1,
+  RESERVED2 = 2,
+  RESERVED3 = 3,
+};
+
+static MAMEFONT_INLINE uint8_t getBitsPerPixel(PixelFormat bpp) {
+  return (bpp == PixelFormat::BW_1BIT) ? 1 : 2;
+}
+
+static MAMEFONT_INLINE uint8_t getPixelsPerFrag(PixelFormat bpp) {
+  return (bpp == PixelFormat::BW_1BIT) ? 8 : 4;
+}
 
 struct Instruction {
   uint8_t length = 0;
@@ -261,9 +275,10 @@ struct BitFlag {
 
 struct FontFlags {
   using VerticalFragment = BitFlag<0, 7>;
-  using Msb1st = BitFlag<0, 6>;
-  using LargeFont = BitFlag<0, 5>;
-  using Proportional = BitFlag<0, 4>;
+  using FarPixelFirst = BitFlag<0, 6>;
+  using PixelFormatField = BitField<uint8_t, uint8_t, 0, 4, 2>;
+  using LargeFont = BitFlag<0, 2>;
+  using Proportional = BitFlag<0, 1>;
   using HasExtendedHeader = BitFlag<0, 0>;
 
   uint8_t value;
@@ -271,22 +286,34 @@ struct FontFlags {
   FontFlags(uint8_t flags) : value(flags) {}
 
   MAMEFONT_INLINE bool verticalFragment() const {
-#ifdef MAMEFONT_HORIZONTAL_FRAGMENT_ONLY
+#ifdef MAMEFONT_HORI_FRAG_ONLY
     return false;
-#elif defined(MAMEFONT_VERTICAL_FRAGMENT_ONLY)
+#elif defined(MAMEFONT_VERT_FRAG_ONLY)
     return true;
 #else
     return VerticalFragment::read(value);
 #endif
   }
 
-  MAMEFONT_INLINE bool msb1st() const {
-#ifdef MAMEFONT_LSB1ST_ONLY
+  MAMEFONT_INLINE bool farPixelFirst() const {
+#ifdef MAMEFONT_NEAR1ST_ONLY
     return false;
-#elif defined(MAMEFONT_MSB1ST_ONLY)
+#elif defined(MAMEFONT_FAR1ST_ONLY)
     return true;
 #else
-    return Msb1st::read(value);
+    return FarPixelFirst::read(value);
+#endif
+  }
+
+  // todo: rename to pixelFormat()
+  MAMEFONT_INLINE PixelFormat bitsPerPixel() const {
+#if defined(MAMEFONT_1BPP_ONLY)
+    return PixelFormat::BW_1BIT;
+#elif defined(MAMEFONT_2BPP_ONLY)
+    return PixelFormat::GRAY_2BIT;
+#else
+    return PixelFormatField::read(value) == 0 ? PixelFormat::BW_1BIT
+                                              : PixelFormat::GRAY_2BIT;
 #endif
   }
 
@@ -311,7 +338,7 @@ struct FontFlags {
   }
 
   MAMEFONT_INLINE bool hasExtendedHeader() const {
-#ifdef MAMEFONT_NO_EXTENDED_HEADER
+#ifdef MAMEFONT_NO_EXT_HEADER
     return false;
 #else
     return HasExtendedHeader::read(value);
@@ -364,7 +391,10 @@ struct FontHeader {
     printf("%sFlags           : 0x%02X\n", indent, flags.value);
     printf("%s  Vertical Frag.  : %s\n", indent,
            flags.verticalFragment() ? "Yes" : "No");
-    printf("%s  MSB First       : %s\n", indent, flags.msb1st() ? "Yes" : "No");
+    printf("%s  Far Pixel First : %s\n", indent,
+           flags.farPixelFirst() ? "Yes" : "No");
+    printf("%s  Bits per Pixel  : %s\n", indent,
+           flags.bitsPerPixel() == PixelFormat::BW_1BIT ? "1" : "2");
     printf("%s  Large Font      : %s\n", indent,
            flags.largeFont() ? "Yes" : "No");
     printf("%s  Proportional    : %s\n", indent,
@@ -478,12 +508,12 @@ struct CPX {
   using Inverse = BitFlag<1, 1>;
   using Length = BitField<uint8_t, uint8_t, 1, 2, 4, 4, 4>;
   using ByteReverse = BitFlag<1, 6>;
-  using BitReverse = BitFlag<1, 7>;
+  using PixelReverse = BitFlag<1, 7>;
 };
 
 using frag_t = uint8_t;
 
-#ifdef MAMEFONT_FRAGMENT_INDEX_8BIT
+#ifdef MAMEFONT_FRAG_INDEX_8BIT
 using frag_index_t = int8_t;
 #else
 using frag_index_t = int16_t;
@@ -499,34 +529,102 @@ using prog_cntr_t = uint16_t;
 const char *mnemonicOf(Operator op);
 #endif
 
-static MAMEFONT_INLINE uint8_t getRightMask(uint8_t width) {
+static MAMEFONT_INLINE uint8_t getRightMaskU8(uint8_t width) {
+  // clang-format off
   switch (width) {
-    case 0:
-      return 0x00;
-    case 1:
-      return 0x01;
-    case 2:
-      return 0x03;
-    case 3:
-      return 0x07;
-    case 4:
-      return 0x0f;
-    case 5:
-      return 0x1f;
-    case 6:
-      return 0x3f;
-    case 7:
-      return 0x7f;
-    default:
-      return 0xff;
+    case 0: return 0x00;
+    case 1: return 0x01;
+    case 2: return 0x03;
+    case 3: return 0x07;
+    case 4: return 0x0F;
+    case 5: return 0x1F;
+    case 6: return 0x3F;
+    case 7: return 0x7F;
+    default: return 0xFF;
   }
+  // clang-format on
 }
 
-static MAMEFONT_INLINE uint8_t reverseBits(uint8_t b) {
-  b = ((b & 0x55) << 1) | ((b & 0xaa) >> 1);
+static MAMEFONT_INLINE uint16_t getRightMaskU16(uint8_t width) {
+  // clang-format off
+  switch (width) {
+    case 0: return 0x0000;
+    case 1: return 0x0001;
+    case 2: return 0x0003;
+    case 3: return 0x0007;
+    case 4: return 0x000F;
+    case 5: return 0x001F;
+    case 6: return 0x003F;
+    case 7: return 0x007F;
+    case 8: return 0x00FF;
+    case 9: return 0x01FF;
+    case 10: return 0x03FF;
+    case 11: return 0x07FF;
+    case 12: return 0x0FFF;
+    case 13: return 0x1FFF;
+    case 14: return 0x3FFF;
+    case 15: return 0x7FFF;
+    default: return 0xFFFF;
+  }
+  // clang-format on
+}
+
+static MAMEFONT_INLINE uint8_t reversePixels(uint8_t b, PixelFormat bpp) {
+  if (bpp == PixelFormat::BW_1BIT) {
+    b = ((b & 0x55) << 1) | ((b & 0xaa) >> 1);
+  }
   b = ((b & 0x33) << 2) | ((b & 0xcc) >> 2);
   b = (b << 4) | (b >> 4);
   return b;
+}
+
+static MAMEFONT_INLINE uint16_t encodeShiftState2bpp(frag_t frag, bool right,
+                                                     bool postSet) {
+  uint16_t state = 0;
+  uint8_t filler = postSet ? 3 : 0;
+  uint8_t l, c, r;
+  c = (frag >> 6) & 0x3;
+  l = right ? filler : c;
+  uint8_t tmp = frag;
+  frag <<= 2;
+  frag |= right ? (tmp & 0x3) : filler;
+  for (uint8_t i = 0; i < 4; i++) {
+    r = (frag >> 6) & 0x3;
+    frag <<= 2;
+    uint8_t next3b;
+    if (c == 0) {
+      next3b = 0b000;
+    } else if (c == 3) {
+      next3b = 0b111;
+    } else if (l < r) {
+      next3b = (c == 1) ? 0b001 : 0b011;
+    } else if (l == r) {
+      next3b = (c == 1) ? 0b010 : 0b101;
+    } else {
+      next3b = (c == 1) ? 0b100 : 0b110;
+    }
+    state <<= 3;
+    state |= next3b;
+    l = c;
+    c = r;
+  }
+  return state;
+}
+
+static MAMEFONT_INLINE frag_t decodeShiftState2bpp(uint16_t state) {
+  frag_t frag = 0;
+  for (uint8_t i = 0; i < 4; i++) {
+    uint8_t pix = 0;
+    if (state & 0x800) pix++;
+    state <<= 1;
+    if (state & 0x800) pix++;
+    state <<= 1;
+    if (state & 0x800) pix++;
+    state <<= 1;
+    frag <<= 2;
+    frag |= pix;
+  }
+  return frag;
 }
 
 }  // namespace mamefont

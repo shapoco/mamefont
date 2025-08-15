@@ -14,6 +14,7 @@ enum class Dimension {
   CAP_HEIGHT,
   ASCENDER_SPACING,
   WEIGHT,
+  BITS_PER_PIXEL,
 };
 
 std::unordered_map<Dimension, int> parseDimensionIdentifier(
@@ -30,6 +31,7 @@ class BitmapFontClass {
   int weight = DIMENSION_INVALID;
   int defaultXSpacing = DIMENSION_INVALID;
   int ySpacing = DIMENSION_INVALID;
+  int bitsPerPixel = DIMENSION_INVALID;
 
   std::vector<std::shared_ptr<BitmapGlyphClass> > glyphs;
 

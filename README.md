@@ -17,6 +17,15 @@ Compressed font format specification and library for tiny-footprint embedded pro
 
 ![](./img/frag_shape.svg)
 
+### Fragment Encoding
+
+|Pixel Format|Pixel Order|Near Pixel|...|Far Pixel|
+|:--:|:--:|:--:|:--:|:--:|
+|1 bit/pixel|Near Pixel First|bit\[0\]|...|bit\[7\]|
+|1 bit/pixel|Far Pixel First|bit\[7\]|...|bit\[0\]|
+|2 bit/pixel|Near Pixel First|bit\[1:0\]|...|bit\[7:6\]|
+|2 bit/pixel|Far Pixel First|bit\[7:6\]|...|bit\[1:0\]|
+
 # Format Specification
 
 ## Blob Structure
@@ -62,10 +71,11 @@ The format version of the font. Its value must be 0x1.
 |Bit Range|Value|Description|
 |:--:|:--|:--|
 |7|`verticalFragment`|0: Horizontal Fragment,<br>1: Vertical Fragment|
-|6|`msb1st`|0: LSB=Near Pixel,<br>1: LSB=Far Pixel|
-|5|`largeFont`|0: Small Size Format for Glyph Table,<br>1: Normal Size Format for Glyph Table|
-|4|`proportional`|0: Monospaced Format for Glyph Table,<br>1: Proportional Format for Glyph Table|
-|3:0|(Reserved)||
+|6|`farPixelFirst`|0: LSB=Near Pixel,<br>1: LSB=Far Pixel|
+|5:4|`pixelFormat`|0: 1 bit/pixel,<br>1: 2 bit/pixel,<br>3: Reserved,<br>4: Reserved|
+|3|0|(Reserved)|
+|2|`largeFont`|0: Small Size Format for Glyph Table,<br>1: Normal Size Format for Glyph Table|
+|1|`proportional`|0: Monospaced Format for Glyph Table,<br>1: Proportional Format for Glyph Table|
 |0|`hasExtendedHeader`|0: No Extended Header,<br>1: Extended Header exists|
 
 ### `firstCode` / `lastCode`
@@ -171,9 +181,9 @@ Offset from start of Bytecode Block in bytes.
 
 |Byte Offset|Bit Range|Value|
 |:--:|:--:|:--|
-|\[0\]|7:6|(Reserved)|
+|0|7:6|(Reserved)|
 ||5:0|`glyphWidth` - 1|
-|\[1\]|7:5|`xStepBack`|
+|1|7:5|`xStepBack`|
 ||4:0|`xSpacing` + 16||
 
 `glyphWidth` - `xStepBack` + `xSpacing` is same as `xAdvance` of GFXfont. Depending on these values, rendered characters can overlap, but it is up to the renderer implementation to render this as the font designer expected.
@@ -227,12 +237,12 @@ The number in parentheses indicates the length of the instruction in bytes.
 
 ## Single Lookup (`LUP`)
 
-|Byte|Bit Range|Value|
+|Byte Offset|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:6|0b10|
+|1|7:6|0b10|
 ||5:0|`index`|
 
-The state machine simply copies the fragment in the Fragment Table to the glyph buffer. If msb1st=1 is set, the fragments in the Fragment Table must also be MSB 1st.
+The state machine simply copies the fragment in the Fragment Table to the glyph buffer. If farPixelFirst=1 is set, the fragments in the Fragment Table must also be Far Pixel 1st.
 
 ![](./img/inst_lup.svg)
 
@@ -240,7 +250,7 @@ The state machine simply copies the fragment in the Fragment Table to the glyph 
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:5|0b110|
+|1|7:5|0b110|
 ||4|`step`|
 ||3:0|`index`|
 
@@ -250,10 +260,10 @@ The state machine simply copies the fragment in the Fragment Table to the glyph 
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:0|0x60|
-|2nd.|7:0|Fragment|
+|1|7:0|0x60|
+|2|7:0|Fragment|
 
-The state machine simply copies the second byte of the instruction code into the glyph buffer. If msb1st=1 is set, the fragment in the instruction code must also be MSB 1st.
+The state machine simply copies the second byte of the instruction code into the glyph buffer. If farPixelFirst=1 is set, the fragment in the instruction code must also be Far Pixel 1st.
 
 ![](./img/inst_ldi.svg)
 
@@ -261,7 +271,7 @@ The state machine simply copies the second byte of the instruction code into the
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:4|0b1110|
+|1|7:4|0b1110|
 ||3:0|`repeatCount` - 1|
 
 ![](./img/inst_rpt.svg)
@@ -270,7 +280,7 @@ The state machine simply copies the second byte of the instruction code into the
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:6|0b00|
+|1|7:6|0b00|
 ||5|`shiftDir` (0: Left, 1: Right)|
 ||4|`postOp` (0: Clear, 1: Set)|
 ||3:2|`shiftSize` - 1|
@@ -284,8 +294,8 @@ When `shiftDir`=0, SFT shifts the fragment towards the LSB direction, other is t
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:0|0x68|
-|2nd.|7:6|`period` - 2|
+|1|7:0|0x68|
+|2|7:6|`period` - 2|
 ||5|`shiftDir` (0: Left, 1: Right)|
 ||4|`postOp` (0: Clear, 1: Set)|
 ||3|`preShift`|
@@ -297,7 +307,7 @@ When `shiftDir`=0, SFT shifts the fragment towards the LSB direction, other is t
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:4|0b1111|
+|1|7:4|0b1111|
 ||3|`maskWidth - 1`|
 ||2:0|`maskPos`|
 
@@ -309,7 +319,7 @@ Combination of `maskWidth=2` and `maskPos=7` (0xFF) is reserved for other instru
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:6|0b01|
+|1|7:6|0b01|
 ||5|`byteReverse`|
 ||4:3|`offset`|
 ||2:0|`length` - 1|
@@ -323,9 +333,9 @@ Combination of `maskWidth=2` and `maskPos=7` (0xFF) is reserved for other instru
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:0|0x40|
-|2nd.|7:0|`offset[7:0]`|
-|3rd.|7|`bitReverse`|
+|1|7:0|0x40|
+|2|7:0|`offset[7:0]`|
+|3|7|`pixelReverse`|
 ||6|`byteReverse`|
 ||5:2|(`length` / 4) - 4|
 ||1|`inverse`|
@@ -337,7 +347,7 @@ Combination of `maskWidth=2` and `maskPos=7` (0xFF) is reserved for other instru
 
 |Byte|Bit Range|Value|
 |:--:|:--:|:--|
-|1st.|7:0|0xFF|
+|1|7:0|0xFF|
 
 The decoder must abort decompression when it encounters an `ABO` instruction.
 

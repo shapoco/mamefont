@@ -13,26 +13,35 @@ struct GlyphBuffer {
   GlyphBuffer(uint8_t *data, frag_index_t stride)
       : data(data), stride(stride) {}
 
-  MAMEFONT_INLINE bool getPixel(const Font &font, const Glyph &glyph, int8_t x,
-                                int8_t y) const {
-    if (!data || !glyph.isValid()) return false;
-    if (x < 0 || glyph.glyphWidth <= x) return false;
-    if (y < 0 || font.glyphHeight() <= y) return false;
+  MAMEFONT_INLINE uint8_t getPixel(const Font &font, const Glyph &glyph,
+                                   int8_t x, int8_t y) const {
+    if (!data || !glyph.isValid()) return 0;
+    if (x < 0 || glyph.glyphWidth <= x) return 0;
+    if (y < 0 || font.glyphHeight() <= y) return 0;
 
-    uint8_t ibit;
+    bool bpp1 = (font.bitsPerPixel() == PixelFormat::BW_1BIT);
+    uint8_t iPixel;
     frag_index_t offset;
     if (font.verticalFragment()) {
-      offset = y / 8 * stride + x;
-      ibit = y & 0x07;
+      offset = y >> 2;
+      if (bpp1) offset >>= 1;
+      offset = offset * stride + x;
+      iPixel = y & (bpp1 ? 7 : 3);
     } else {
-      offset = x / 8 + y * stride;
-      ibit = x & 0x07;
+      offset = x >> 2;
+      if (bpp1) offset >>= 1;
+      offset = offset + y * stride;
+      iPixel = x & (bpp1 ? 7 : 3);
     }
-    if (font.msb1st()) {
-      ibit = 7 - ibit;
+    if (font.farPixelFirst()) {
+      iPixel = (bpp1 ? 7 : 3) - iPixel;
     }
-    uint8_t mask = 1 << ibit;
-    return (data[offset] & mask) != 0;
+    if (bpp1) {
+      return (data[offset] >> iPixel) & 1;
+    }
+    else {
+      return (data[offset] >> (iPixel * 2)) & 0x03;
+    }
   }
 };
 

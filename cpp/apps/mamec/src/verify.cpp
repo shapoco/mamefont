@@ -72,8 +72,9 @@ bool verifyGlyphs(const BitmapFont &bmpFont, const mf::Font &mameFont,
     int numPixelDiff = 0;
     for (int y = 0; y < mameFont.glyphHeight(); y++) {
       for (int x = 0; x < bmpGlyph->width; x++) {
-        bool expectedPixel = bmpGlyph->bmp->get(x, y) >= 128;
-        bool actualPixel = glyphBuff.getPixel(mameFont, mameGlyph, x, y);
+        uint8_t expectedPixel =
+            bmpGlyph->bmp->get(x, y, mameFont.bitsPerPixel());
+        uint8_t actualPixel = glyphBuff.getPixel(mameFont, mameGlyph, x, y);
         if (expectedPixel != actualPixel) {
           numPixelDiff++;
         }
@@ -81,9 +82,8 @@ bool verifyGlyphs(const BitmapFont &bmpFont, const mf::Font &mameFont,
       }
     }
     if (numPixelDiff > 0) {
-      std::cerr << "*ERROR: Glyph verification failed for code "
-                << c2s(code) << ": " << numPixelDiff
-                << " pixel differences." << std::endl;
+      std::cerr << "*ERROR: Glyph verification failed for code " << c2s(code)
+                << ": " << numPixelDiff << " pixel differences." << std::endl;
       totalFailedGlyphs++;
     }
 

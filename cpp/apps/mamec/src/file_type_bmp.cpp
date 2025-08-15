@@ -11,8 +11,9 @@
 
 namespace mamefont::mamec {
 
-std::string importBitmapFont(const BitmapFont bmpFont, std::vector<uint8_t>& blob,
-                      const EncodeOptions& options) {
+std::string importBitmapFont(const BitmapFont bmpFont,
+                             std::vector<uint8_t>& blob,
+                             const EncodeOptions& options) {
   std::string fontName = bmpFont->fullName;
 
   if (options.verbose) {
@@ -26,6 +27,7 @@ std::string importBitmapFont(const BitmapFont bmpFont, std::vector<uint8_t>& blo
     std::cout << "  Default X spacing : " << bmpFont->defaultXSpacing
               << std::endl;
     std::cout << "  Y spacing         : " << bmpFont->ySpacing << std::endl;
+    std::cout << "  Bits per pixel    : " << bmpFont->bitsPerPixel << std::endl;
   }
 
   Encoder encoder(options);
