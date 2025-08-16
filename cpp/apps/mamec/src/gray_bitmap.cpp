@@ -150,10 +150,9 @@ static void rgb2hsv(int r, int g, int b, int *h, int *s, int *v) {
 
 static frag_t encodePixel(int16_t value, int iPixel, mf::PixelFormat bpp) {
   if (bpp == mf::PixelFormat::BW_1BIT) {
-    return (value >= 128) ? (1 << iPixel) : 0;
+    return ((value >> 7) & 1) << iPixel;
   } else if (bpp == mf::PixelFormat::GRAY_2BIT) {
-    value = (value < 64) ? 0 : (value < 160) ? 1 : (value < 224) ? 2 : 3;
-    return value << (iPixel * 2);
+    return ((value >> 6) & 3) << (iPixel * 2);
   } else {
     throw std::invalid_argument("Unsupported bits per pixel");
   }
