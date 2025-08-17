@@ -14,7 +14,8 @@
             "defines": [
                 "MAMEFONT_EXCEPTIONS",
                 "MAMEFONT_DEBUG",
-                "MAMEFONT_STATISTICS"
+                "MAMEFONT_STATISTICS",
+                "MAMEFONT_INCLUDE_IMPL"
             ]
         }
     ],

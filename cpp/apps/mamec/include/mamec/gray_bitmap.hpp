@@ -23,10 +23,13 @@ class GrayBitmapClass {
   int width;
   int height;
 
-  GrayBitmapClass(std::vector<int16_t>& data, int width, int height);
-  GrayBitmapClass(const std::string& path);
+  GrayBitmapClass(std::vector<int16_t> &data, int width, int height);
+  GrayBitmapClass(const std::string &path);
   int16_t get(int x, int y, int16_t defaultColor = -1) const;
-  uint8_t get(int x, int y, mf::PixelFormat fmt, int16_t defaultColor = -1) const;
+  uint8_t get(int x, int y, mf::PixelFormat fmt,
+              int16_t defaultColor = -1) const;
+  bool getEffectiveArea(mf::PixelFormat fmt, int *xMin, int *xMax, int *yMin,
+                        int *yMax) const;
 
   std::shared_ptr<GrayBitmapClass> crop(int x, int y, int w, int h) const;
 

@@ -11,12 +11,12 @@ int main(int argc, char** argv) {
   mamefont::Status ret;
   const mamefont::Font font(TARGET_BLOB_NAME);
 
-  int glyphHeight = font.glyphHeight();
+  int fontHeight = font.fontHeight();
   int numChars = font.numGlyphs();
   int codeOffset = font.firstCode();
   bool verticalFragment = font.verticalFragment();
 
-  printf("font32.glyphHeight()      : %d\n", glyphHeight);
+  printf("font32.fontHeight()      : %d\n", fontHeight);
   printf("font32.glyphTableLen()    : %d\n", numChars);
   printf("font32.firstCode()        : %d\n", codeOffset);
   printf("font32.verticalFragment() : %d\n", verticalFragment);
@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
       printf(" _|");
       for (int x = 0; x < glyphWidth * X_ZOOM; x++) printf("_");
       printf("|_\n");
-      for (int y = 0; y < glyphHeight; y++) {
+      for (int y = 0; y < fontHeight; y++) {
         printf(((y % 8) == 7) ? " _|" : "  |");
         for (int x = 0; x < glyphWidth; x++) {
           uint8_t bit;

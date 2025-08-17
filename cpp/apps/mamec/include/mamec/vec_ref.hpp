@@ -14,6 +14,7 @@ struct VecRef {
   const size_t size;
   const mf::PixelFormat bpp;
 
+  // todo: move to cpp
   VecRef(const std::vector<frag_t> &frags, size_t start, size_t end,
          mf::PixelFormat bpp)
       : vector(frags), start(start), size(end - start), bpp(bpp) {
@@ -32,6 +33,7 @@ struct VecRef {
     }
   }
 
+  // todo: move to cpp
   VecRef(const std::vector<frag_t> &frags, mf::PixelFormat bpp)
       : vector(frags), start(0), size(frags.size()), bpp(bpp) {}
 
@@ -49,6 +51,7 @@ struct VecRef {
     return vector[start + normalizeIndex(i)];
   }
 
+  // todo: move to cpp
   VecRef slice(int start, int end) const {
     if (start < 0 || end < 0 || start > end) {
       throw std::invalid_argument(
@@ -63,6 +66,7 @@ struct VecRef {
     return VecRef(vector, this->start + start, this->start + end, bpp);
   }
 
+  // todo: move to cpp
   inline std::vector<frag_t> toVector(uint8_t cpxFlag = 0) const {
     std::vector<frag_t> result;
     result.reserve(size);
@@ -80,6 +84,7 @@ struct VecRef {
   }
 };
 
+// todo: move to cpp
 static inline bool maskedEqual(const VecRef &a, const VecRef &b,
                                const VecRef &mask, uint8_t cpxFlags = 0) {
   if (a.size != mask.size || b.size != mask.size) {
@@ -95,5 +100,10 @@ static inline bool maskedEqual(const VecRef &a, const VecRef &b,
   }
   return true;
 }
+
+void dumpByteArray(const std::vector<uint8_t> &arr, const std::string &indent,
+                   int offset = 0, int length = -1);
+void dumpByteArray(const VecRef &arr, const std::string &indent, int offset = 0,
+                   int length = -1);
 
 }  // namespace mamefont::mamec

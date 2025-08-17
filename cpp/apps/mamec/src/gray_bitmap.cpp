@@ -75,6 +75,31 @@ uint8_t GrayBitmapClass::get(int x, int y, mf::PixelFormat fmt,
   return encodePixel(get(x, y, defaultColor), 0, fmt);
 }
 
+bool GrayBitmapClass::getEffectiveArea(mf::PixelFormat fmt, int *xMin,
+                                       int *xMax, int *yMin, int *yMax) const {
+  int xmn = width - 1;
+  int xmx = 0;
+  int ymn = height - 1;
+  int ymx = 0;
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      if (get(x, y, fmt) != 0) {
+        if (x < xmn) xmn = x;
+        if (x > xmx) xmx = x;
+        if (y < ymn) ymn = y;
+        if (y > ymx) ymx = y;
+      }
+    }
+  }
+  bool success = (xmn <= xmx && ymn <= ymx);
+  if (!success) xmn = xmx = ymn = ymx = 0;
+  if (xMin) *xMin = xmn;
+  if (xMax) *xMax = xmx;
+  if (yMin) *yMin = ymn;
+  if (yMax) *yMax = ymx;
+  return success;
+}
+
 std::shared_ptr<GrayBitmapClass> GrayBitmapClass::crop(int x, int y, int w,
                                                        int h) const {
   if (x < 0 || y < 0 || x + w > width || y + h > height) {

@@ -22,8 +22,10 @@ class GlyphObjectClass {
   bool farPixelFirst = false;
   int width = 0;
   int height = 0;
-  int xSpacing = 0;
+  int xSpaceOffset = 0;
   int xStepBack = 0;
+  bool useAltTop = false;
+  bool useAltBottom = false;
 
   std::vector<Operation> operations;
 
@@ -35,8 +37,8 @@ class GlyphObjectClass {
 
   GlyphObjectClass(int code, std::vector<frag_t> &frags,
                    std::vector<frag_t> &compMask, int width, int height,
-                   bool vertFrag, bool farPixelFirst, int xSpacing,
-                   int xNegOffset)
+                   bool vertFrag, bool farPixelFirst, int xSpace, int xStepBack,
+                   bool useAltTop, bool useAltBottom)
       : code(code),
         fragments(frags),
         compareMask(compMask),
@@ -44,8 +46,10 @@ class GlyphObjectClass {
         height(height),
         verticalFragment(vertFrag),
         farPixelFirst(farPixelFirst),
-        xSpacing(xSpacing),
-        xStepBack(xNegOffset) {}
+        xSpaceOffset(xSpace),
+        xStepBack(xStepBack),
+        useAltTop(useAltTop),
+        useAltBottom(useAltBottom) {}
 
   inline int tall() const { return verticalFragment ? width : height; }
   inline int thickness() const { return verticalFragment ? height : width; }

@@ -26,7 +26,7 @@ std::string importBitmapFont(const BitmapFont bmpFont,
     std::cout << "  Weight            : " << bmpFont->weight << std::endl;
     std::cout << "  Default X spacing : " << bmpFont->defaultXSpacing
               << std::endl;
-    std::cout << "  Y spacing         : " << bmpFont->ySpacing << std::endl;
+    std::cout << "  Y spacing         : " << bmpFont->ySpace << std::endl;
     std::cout << "  Bits per pixel    : " << bmpFont->bitsPerPixel << std::endl;
   }
 

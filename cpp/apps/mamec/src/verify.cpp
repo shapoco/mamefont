@@ -21,25 +21,27 @@ bool verifyGlyphs(const BitmapFont &bmpFont, const mf::Font &mameFont,
     mameFont.header.dumpHeader("    ");
   }
 
-  uint8_t stride;
-  uint16_t buffSize = mameFont.calcGlyphBufferSize(&stride);
+  uint16_t buffSize = mameFont.calcMaxGlyphBufferSize();
   if (verbose) {
     std::cout << "  Required buffer size: " << static_cast<int>(buffSize)
-              << " bytes, stride: " << static_cast<int>(stride) << std::endl;
+              << " Bytes" << std::endl;
   }
-  if (buffSize < 0 || 512 < buffSize) {
+  if (buffSize < 0 || 1024 < buffSize) {
     throw std::runtime_error("Invalid buffer size");
   }
   std::vector<uint8_t> bufferVec(buffSize * 2);
-  mf::GlyphBuffer glyphBuff(bufferVec.data(), stride);
+  mf::Glyph mameGlyph;
+  mameGlyph.data = bufferVec.data();
 
   for (int code = 0; code <= 255; code++) {
-    mf::Glyph mameGlyph;
-    mf::setVerbose(code == verboseForCode);
+    mf::Debugger::setVerbose(code == verboseForCode);
 
     auto bmpGlyph = bmpFont->getGlyph(code);
     try {
-      ret = mamefont::decodeGlyph(mameFont, code, glyphBuff, &mameGlyph);
+      ret = mameFont.getGlyph(code, &mameGlyph);
+      if (ret == mf::Status::SUCCESS) {
+        ret = mamefont::decodeGlyph(mameFont, &mameGlyph);
+      }
     } catch (const mf::MameFontException &e) {
       ret = e.status;
     }
@@ -70,12 +72,12 @@ bool verifyGlyphs(const BitmapFont &bmpFont, const mf::Font &mameFont,
     }
 
     int numPixelDiff = 0;
-    for (int y = 0; y < mameFont.glyphHeight(); y++) {
+    for (int y = 0; y < mameFont.fontHeight(); y++) {
       for (int x = 0; x < bmpGlyph->width; x++) {
         uint8_t expectedPixel =
-            bmpGlyph->bmp->get(x, y, mameFont.bitsPerPixel());
-        uint8_t actualPixel = glyphBuff.getPixel(mameFont, mameGlyph, x, y);
-        if (expectedPixel != actualPixel) {
+            bmpGlyph->bmp->get(x, y, mameFont.fragFormat());
+        uint8_t outputPixel = mameGlyph.getPixel(x, y - mameGlyph.yOffset);
+        if (expectedPixel != outputPixel) {
           numPixelDiff++;
         }
         totalPixels++;

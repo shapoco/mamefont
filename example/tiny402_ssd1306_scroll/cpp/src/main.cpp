@@ -24,14 +24,14 @@ mf::GlyphBuffer glyphBuff;
 static void drawString(const mf::Font& font, const char* str, int16_t x,
                        int8_t row) {
   mf::Glyph glyph;
-  int8_t rows = (font.glyphHeight() + 7) / 8;
+  int8_t rows = (font.fontHeight() + 7) / 8;
   for (const char* c = str; *c; c++) {
     mf::decodeGlyph(font, *c, glyphBuff, &glyph);
     x -= glyph.xStepBack;
     display.drawImage(glyphBuff.data, x, row, MAX_GLYPH_WIDTH, glyph.glyphWidth,
                       rows);
-    display.fillRect(x + glyph.glyphWidth, row, glyph.xSpacing, rows, 0x00);
-    x += glyph.glyphWidth + glyph.xSpacing;
+    display.fillRect(x + glyph.glyphWidth, row, glyph.xSpace, rows, 0x00);
+    x += glyph.glyphWidth + glyph.xSpace;
   }
 }
 

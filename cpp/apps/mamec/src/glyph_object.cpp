@@ -23,7 +23,7 @@ void GlyphObjectClass::report(std::string indent) const {
 
   std::cout << indent << "Code: " << c2s(code) << std::endl;
   std::cout << indent << "Width: " << width << std::endl;
-  std::cout << indent << "X Spacing: " << xSpacing << std::endl;
+  std::cout << indent << "X Spacing: " << xSpaceOffset << std::endl;
   std::cout << indent << "X Negative Offset: " << xStepBack << std::endl;
   std::cout << indent << "Fragments (" << fragments.size()
             << " Bytes):" << std::endl;

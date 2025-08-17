@@ -80,8 +80,6 @@ std::string s2s(std::string s, int width = 4);
 static inline std::string yn(bool value) { return value ? "Yes" : "No"; }
 std::string u2x8(uint8_t byte);
 std::string u2x16(uint16_t value);
-void dumpByteArray(const std::vector<uint8_t> &arr, const std::string &indent,
-                   int offset = 0, int length = -1);
 void dumpCStyleArrayContent(std::ostream &os, const std::vector<uint8_t> &arr,
                             const std::string &indent, int offset = 0,
                             int length = -1, bool hex = true,

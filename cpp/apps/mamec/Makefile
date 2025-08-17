@@ -48,7 +48,7 @@ $(BIN): $(APP_OBJ_LIST) $(MAMEFONT_OBJ_LIST) $(EXTRA_DEPENDENCIES)
 	@mkdir -p $(dir $@)
 	$(CXX) -o $@ $(APP_OBJ_LIST) $(MAMEFONT_OBJ_LIST) $(LDFLAGS)
 
-$(BUILD_DIR)/%.o: $(APP_SRC_DIR)/%.cpp $(APP_HPP_LIST) $(EXTRA_DEPENDENCIES)
+$(BUILD_DIR)/%.o: $(APP_SRC_DIR)/%.cpp $(APP_HPP_LIST) $(MAMEFONT_HPP_LIST) $(EXTRA_DEPENDENCIES)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 

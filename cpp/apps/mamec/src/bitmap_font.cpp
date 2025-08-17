@@ -103,7 +103,7 @@ BitmapFontClass::BitmapFontClass(const std::string &bmpPathStr) {
       }
 
       if (dimsObj.contains("y_spacing")) {
-        dimsObj.at("y_spacing").get_to(ySpacing);
+        dimsObj.at("y_spacing").get_to(ySpace);
       }
     }
   }
@@ -116,8 +116,8 @@ BitmapFontClass::BitmapFontClass(const std::string &bmpPathStr) {
     defaultXSpacing = std::ceil(bodySize / 16.0);
   }
 
-  if (ySpacing == DIMENSION_INVALID) {
-    ySpacing = std::ceil((bodySize - ascenderSpacing) * 1.2 - bodySize);
+  if (ySpace == DIMENSION_INVALID) {
+    ySpace = std::ceil((bodySize - ascenderSpacing) * 1.2 - bodySize);
   }
 
   if (bitsPerPixel == DIMENSION_INVALID) {
@@ -181,27 +181,27 @@ std::shared_ptr<BitmapGlyphClass> BitmapFontClass::decodeGlyph(
   while (bmp->get(x + w, y + 1, 0) == GrayBitmapClass::MARKER_SPACING) {
     w += 1;
   }
-  int leftAntiSpace = w;
+  int xStepBack = w;
 
   // Find right side anti spacer
-  int rightAntiSpace = 0;
-  if (leftAntiSpace < glyphWidth) {
+  int xAntiSpace = 0;
+  if (xStepBack < glyphWidth) {
     w = 0;
     int r = glyphWidth - 1;
     while (bmp->get(x + r - w, y + 1, 0) == GrayBitmapClass::MARKER_SPACING) {
       w += 1;
     }
-    rightAntiSpace = w;
+    xAntiSpace = w;
   } else {
-    rightAntiSpace = 0;
+    xAntiSpace = 0;
   }
 
   // Extract Glyph Bitmap
-  int glyphHeight = bodySize;
-  auto cropped = bmp->crop(x, y - glyphHeight, glyphWidth, glyphHeight);
+  int fontHeight = bodySize;
+  auto cropped = bmp->crop(x, y - fontHeight, glyphWidth, fontHeight);
 
   return std::make_shared<BitmapGlyphClass>(
-      code, glyphWidth, glyphHeight, cropped, leftAntiSpace, rightAntiSpace);
+      code, glyphWidth, fontHeight, cropped, xStepBack, xAntiSpace);
 }
 
 std::unordered_map<Dimension, int> parseDimensionIdentifier(

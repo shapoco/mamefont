@@ -33,8 +33,12 @@ struct TryContext {
 class Encoder {
  public:
   const EncodeOptions options;
-  int glyphHeight = 0;
-  int ySpacing = 0;
+  int fontHeight = 0;
+  int xSpaceBase = 0;
+  int ySpace = 0;
+  int altTop = 0;
+  int altBottom = 0;
+  bool mayBeLargeFormat = true;
   mf::PixelFormat pixelFormat = mf::PixelFormat::BW_1BIT;
   std::map<int, GlyphObject> glyphs;
   std::vector<frag_t> fragTable;
@@ -43,7 +47,6 @@ class Encoder {
 
   Encoder(EncodeOptions opts) : options(opts){};
 
-  void addGlyph(const BitmapFont &font, const BitmapGlyph &glyph);
   void addFont(const BitmapFont &font);
   void encode();
   void generateBlob();
@@ -98,6 +101,8 @@ class Encoder {
   }
 
  private:
+  void determineAltTopBottom(const BitmapFont &font);
+  void addGlyph(const BitmapFont &font, const BitmapGlyph &glyph);
   void detectFragmentDuplications(std::string indent);
   void generateInitialOperations(GlyphObject &glyph, bool verbose = false,
                                  std::string indent = "");
@@ -120,6 +125,5 @@ class Encoder {
   void replaceLDItoLUP(bool verbose = false, std::string indent = "");
   int reverseLookup(frag_t frag);
   void checkFragmentDuplicationSolvable();
-
 };
 }  // namespace mamefont::mamec

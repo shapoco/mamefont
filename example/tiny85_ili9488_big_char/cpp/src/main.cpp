@@ -53,15 +53,15 @@ const char* MSG_LINES[] = {
 static void drawString(const mf::Font& font, const char* str, coord_t x,
                        coord_t y, uint16_t fgColor, uint16_t bgColor) {
   mf::Glyph glyph;
-  int8_t glyphHeight = font.glyphHeight();
+  int8_t fontHeight = font.fontHeight();
   for (const char* c = str; *c; c++) {
     mf::decodeGlyph(font, *c, glyphBuff, &glyph);
     x -= glyph.xStepBack;
     display.drawImage1bpp(glyphBuff.data, MAX_GLYPH_COLS, x, y,
-                          glyph.glyphWidth, glyphHeight, fgColor, bgColor);
-    display.fillRect(x + glyph.glyphWidth, y, glyph.xSpacing, glyphHeight,
+                          glyph.glyphWidth, fontHeight, fgColor, bgColor);
+    display.fillRect(x + glyph.glyphWidth, y, glyph.xSpace, fontHeight,
                      bgColor);
-    x += glyph.glyphWidth + glyph.xSpacing;
+    x += glyph.glyphWidth + glyph.xSpace;
   }
 }
 

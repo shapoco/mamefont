@@ -27,25 +27,151 @@ void Encoder::addFont(const BitmapFont &bmpFont) {
     std::cout << "Adding font: " << bmpFont->familyName.c_str() << std::endl;
   }
 
-  glyphHeight = bmpFont->bodySize;
-  ySpacing = bmpFont->ySpacing;
+  fontHeight = bmpFont->bodySize;
+  ySpace = bmpFont->ySpace;
   pixelFormat = (bmpFont->bitsPerPixel == 1) ? PixelFormat::BW_1BIT
                                              : PixelFormat::GRAY_2BIT;
+
+  int xSpaceMin = 99999;
+  for (const auto &bmpGlyph : bmpFont->glyphs) {
+    int xsp = bmpFont->defaultXSpacing - bmpGlyph->xAntiSpace;
+    if (xsp < xSpaceMin) {
+      xSpaceMin = xsp;
+    }
+  }
+  xSpaceBase = xSpaceMin;
+
+  std::map<std::string, bool> largeFormatReasons;
+  int totalFrags = 0;
+  for (const auto &bmpGlyph : bmpFont->glyphs) {
+    if (!mf::SmallGlyphDim::GlyphWidth::inRange(bmpGlyph->width)) {
+      largeFormatReasons["GlyphWidth"] = true;
+      break;
+    }
+    int xsp = bmpFont->defaultXSpacing - bmpGlyph->xAntiSpace - xSpaceBase;
+    if (!mf::SmallGlyphDim::XSpaceOffset::inRange(xsp)) {
+      largeFormatReasons["XSpaceOffset"] = true;
+      break;
+    }
+    if (!mf::SmallGlyphDim::XStepBack::inRange(bmpGlyph->xStepBack)) {
+      largeFormatReasons["XStepBack"] = true;
+      break;
+    }
+    totalFrags += bmpGlyph->bmp->width * bmpGlyph->bmp->height /
+                  mf::getBitsPerPixel(pixelFormat);
+  }
+  if (totalFrags > 5000) {
+    largeFormatReasons["Total Number of Fragments"] = true;
+  }
+  mayBeLargeFormat = !largeFormatReasons.empty();
+  if (options.verbose) {
+    if (mayBeLargeFormat) {
+      std::cout << "  This may be large font due to: " << std::endl;
+      for (const auto &reasonPair : largeFormatReasons) {
+        std::cout << "    " << reasonPair.first << std::endl;
+      }
+    } else {
+      std::cout << "  This may be small font." << std::endl;
+    }
+  }
+
+  determineAltTopBottom(bmpFont);
+
   for (const auto &bmpGlyph : bmpFont->glyphs) {
     addGlyph(bmpFont, bmpGlyph);
   }
 }
 
+void Encoder::determineAltTopBottom(const BitmapFont &font) {
+  if (!mayBeLargeFormat) {
+    // altTop and altBottom are cannot be used on small fonts
+    altTop = 0;
+    altBottom = fontHeight;
+  }
+
+  std::vector<int> yEdgeCount;
+  yEdgeCount.resize(fontHeight + 1, 0);
+  for (const auto &bmpGlyph : font->glyphs) {
+    int top, yMax;
+    if (bmpGlyph->bmp->getEffectiveArea(pixelFormat, nullptr, nullptr, &top,
+                                        &yMax)) {
+      int bottom = yMax + 1;
+      if (options.verticalFrag) {
+        int ppf = mf::getPixelsPerFrag(pixelFormat);
+        top = (top / ppf) * ppf;
+        bottom = ((bottom + ppf - 1) / ppf) * ppf;
+        if (bottom > fontHeight) bottom = fontHeight;
+      }
+      if (top >= fontHeight / 5) yEdgeCount[top] += 1;
+      if (bottom < fontHeight) yEdgeCount[bottom] -= 1;
+    }
+  }
+
+  int mostPositiveCount = 0;
+  int mostPositiveY = 0;
+  int mostNegativeCount = 0;
+  int mostNegativeY = 0;
+  for (int y = 0; y < yEdgeCount.size(); ++y) {
+    if (yEdgeCount[y] >= mostPositiveCount) {
+      mostPositiveCount = yEdgeCount[y];
+      mostPositiveY = y;
+    }
+    if (yEdgeCount[y] <= mostNegativeCount) {
+      mostNegativeCount = yEdgeCount[y];
+      mostNegativeY = y;
+    }
+  }
+
+  if (mostPositiveY < mostNegativeY) {
+    altTop = mostPositiveY;
+    altBottom = mostNegativeY;
+  } else {
+    altTop = 0;
+    altBottom = fontHeight;
+  }
+}
+
 void Encoder::addGlyph(const BitmapFont &bmpFont, const BitmapGlyph &bmpGlyph) {
-  auto frags = bmpGlyph->bmp->toFragments(options.verticalFrag,
-                                          options.farPixelFirst, pixelFormat);
+  auto bmp = bmpGlyph->bmp;
+
+  bool useAltTop = false;
+  bool useAltBottom = false;
+  if (mayBeLargeFormat) {
+    int yMin, yMax;
+    if (bmp->getEffectiveArea(pixelFormat, nullptr, nullptr, &yMin, &yMax)) {
+      useAltTop = altTop <= yMin;
+      useAltBottom = yMax < altBottom;
+    } else {
+      useAltTop = true;
+      useAltBottom = true;
+    }
+  }
+
+  if (useAltTop || useAltBottom) {
+    int top = useAltTop ? altTop : 0;
+    int bottom = useAltBottom ? altBottom : fontHeight;
+    bmp = bmp->crop(0, top, bmp->width, bottom - top);
+    if (options.verbose && options.verboseForCode == bmpGlyph->code) {
+      std::cout << "  Alternative Top/Bottom used for: " << c2s(bmpGlyph->code)
+                << " top=" << (useAltTop ? 1 : 0) << ", "
+                << " bottom=" << (useAltBottom ? 1 : 0) << std::endl;
+    }
+  }
+
+  if (options.verbose && options.verboseForCode == bmpGlyph->code) {
+    std::cout << "  glyphWidth=" << bmp->width << ", "
+              << "glyphHeight=" << bmp->height << std::endl;
+  }
+
+  auto frags = bmp->toFragments(options.verticalFrag, options.farPixelFirst,
+                                pixelFormat);
 
   std::vector<frag_t> compareMask;
   int numFrags = frags.size();
   compareMask.resize(numFrags, 0xFF);
   if (!options.forceZeroPadding) {
-    int w = bmpGlyph->bmp->width;
-    int h = bmpGlyph->bmp->height;
+    int w = bmp->width;
+    int h = bmp->height;
     int viewPort = options.verticalFrag ? h : w;
     int trackLength = options.verticalFrag ? w : h;
     int bpp = mf::getBitsPerPixel(pixelFormat);
@@ -61,11 +187,11 @@ void Encoder::addGlyph(const BitmapFont &bmpFont, const BitmapGlyph &bmpGlyph) {
     }
   }
 
+  int xspo = bmpFont->defaultXSpacing - bmpGlyph->xAntiSpace - xSpaceBase;
   glyphs[bmpGlyph->code] = std::make_shared<GlyphObjectClass>(
-      bmpGlyph->code, frags, compareMask, bmpGlyph->width, bmpFont->bodySize,
-      options.verticalFrag, options.farPixelFirst,
-      bmpFont->defaultXSpacing - bmpGlyph->leftAntiSpace,
-      bmpGlyph->leftAntiSpace);
+      bmpGlyph->code, frags, compareMask, bmp->width, bmp->height,
+      options.verticalFrag, options.farPixelFirst, xspo, bmpGlyph->xStepBack,
+      useAltTop, useAltBottom);
 }
 
 void Encoder::encode() {
@@ -147,26 +273,29 @@ void Encoder::detectFragmentDuplications(std::string indent) {
   // glyph's fragment
   for (auto &thisPair : glyphs) {
     GlyphObject &thisGlyph = thisPair.second;
-    const auto &thisFrags = thisGlyph->fragments;
-    int thisSize = thisFrags.size();
+    const VecRef thisFrags(thisGlyph->fragments, pixelFormat);
+    const VecRef thisMask(thisGlyph->compareMask, pixelFormat);
+    int thisSize = thisFrags.size;
     int thisCode = thisGlyph->code;
 
     int bestDupSrcCode = -1;
     size_t bestDupSrcSize = 0;
     for (auto &otherPair : glyphs) {
       GlyphObject &otherGlyph = otherPair.second;
-      const auto &otherFrags = otherGlyph->fragments;
-      int otherSize = otherFrags.size();
+      int otherSize = otherGlyph->fragments.size();
       int otherCode = otherGlyph->code;
 
       if (otherCode == thisCode) continue;
       if (otherSize < thisSize) continue;
       if (otherSize == thisSize && otherCode > thisCode) continue;
 
-      VecRef thisPart(thisFrags, pixelFormat);
-      VecRef otherPart(otherFrags, 0, thisSize, pixelFormat);
-      VecRef compMask(thisGlyph->compareMask, pixelFormat);
-      if (!maskedEqual(thisPart, otherPart, compMask)) {
+      const VecRef otherFrags(otherGlyph->fragments, 0, thisSize, pixelFormat);
+      const VecRef otherMask(otherGlyph->compareMask, 0, thisSize, pixelFormat);
+
+      if (!maskedEqual(thisFrags, otherFrags, thisMask)) {
+        continue;
+      }
+      if (!maskedEqual(thisMask, otherMask, thisMask)) {
         continue;
       }
 
@@ -228,6 +357,8 @@ void Encoder::generateInitialOperations(GlyphObject &glyph, bool verbose,
   if (verbose) {
     std::cout << indent << "Fragments:" << std::endl;
     dumpByteArray(glyph->fragments, indent + "  ");
+    std::cout << indent << "Compare Mask:" << std::endl;
+    dumpByteArray(glyph->compareMask, indent + "  ");
   }
 
   std::vector<std::vector<int>> scoreBoard(numFrags + 1,
@@ -534,6 +665,7 @@ bool Encoder::tryShiftCore(TryContext ctx, bool isSFI, bool right, bool postSet,
       if (!maskedEqual(lastFrag, workFrag, ctx.compareMask[offset])) {
         changeDetected = true;
       }
+
       if (maskedEqual(workFrag, ctx.future[offset], ctx.compareMask[offset])) {
         output.push_back(workFrag);
         offset++;
@@ -962,20 +1094,20 @@ void Encoder::generateBlob() {
     const GlyphObject &glyph = glyphPair.second;
 
     // Check glyph dimensions
-    if (!mf::SmallGlyphDimension::GlyphWidth::inRange(glyph->width)) {
+    if (!mf::SmallGlyphDim::GlyphWidth::inRange(glyph->width)) {
       largeFontReasons["glyphWidth"] = true;
     }
-    if (!mf::SmallGlyphDimension::XSpacing::inRange(glyph->xSpacing)) {
-      largeFontReasons["xSpacing"] = true;
+    if (!mf::SmallGlyphDim::XSpaceOffset::inRange(glyph->xSpaceOffset)) {
+      largeFontReasons["xSpaceOffset"] = true;
     }
-    if (!mf::SmallGlyphDimension::XStepBack::inRange(glyph->xStepBack)) {
+    if (!mf::SmallGlyphDim::XStepBack::inRange(glyph->xStepBack)) {
       largeFontReasons["xStepBack"] = true;
     }
     if (lastWidth >= 0 && lastWidth != glyph->width) {
       proportionalReasons["glyphWidth"] = true;
     }
-    if (lastXSpacing >= 0 && lastXSpacing != glyph->xSpacing) {
-      proportionalReasons["xSpacing"] = true;
+    if (lastXSpacing >= 0 && lastXSpacing != glyph->xSpaceOffset) {
+      proportionalReasons["xSpace"] = true;
     }
     if (glyph->xStepBack != 0) {
       proportionalReasons["xStepBack"] = true;
@@ -993,9 +1125,12 @@ void Encoder::generateBlob() {
         nextEntryPoint++;
       }
     }
+    if (glyph->useAltTop || glyph->useAltBottom) {
+      largeFontReasons["altTop/altBottom"] = true;
+    }
 
     lastWidth = glyph->width;
-    lastXSpacing = glyph->xSpacing;
+    lastXSpacing = glyph->xSpaceOffset;
   }
 
   bool largeFont = largeFontReasons.size() > 0;
@@ -1109,7 +1244,7 @@ void Encoder::generateBlob() {
     }
   }
 
-  uint8_t version = 1;
+  uint8_t version = 0x00;  // todo: 0x01 or 0x10
 
   uint8_t fontFlags = 0;
   fontFlags |= mf::FontFlags::VerticalFragment::place(options.verticalFrag);
@@ -1117,24 +1252,26 @@ void Encoder::generateBlob() {
   fontFlags |= mf::FontFlags::LargeFont::place(largeFont);
   fontFlags |= mf::FontFlags::Proportional::place(proportional);
   fontFlags |=
-      mf::FontFlags::PixelFormatField::place(static_cast<uint8_t>(pixelFormat));
+      mf::FontFlags::FragFormat::place(static_cast<uint8_t>(pixelFormat));
 
   blob.clear();
 
   // Font Header
   {
-    uint8_t header[8] = {0};
+    uint8_t header[mf::FontHeader::SIZE] = {0};
     uint8_t *ptr = header;
     mf::FontHeader::FormatVersion::write(ptr, version, "formatVersion");
     mf::FontHeader::Flags::write(ptr, fontFlags, "fontFlags");
     mf::FontHeader::FirstCode::write(ptr, firstCode, "firstCode");
     mf::FontHeader::LastCode::write(ptr, lastCode, "lastCode");
+    mf::FontHeader::MaxGlyphWidth::write(ptr, maxGlyphWidth, "maxGlyphWidth");
+    mf::FontHeader::GlyphHeight::write(ptr, fontHeight, "fontHeight");
+    mf::FontHeader::XSpace::write(ptr, xSpaceBase, "xSpace");
+    mf::FontHeader::YSpace::write(ptr, ySpace, "ySpace");
+    mf::FontHeader::AltTop::write(ptr, altTop, "altTop");
+    mf::FontHeader::AltBottom::write(ptr, altBottom, "altBottom");
     mf::FontHeader::FragmentTableSize::write(ptr, fragTable.size(),
                                              "fragmentTableSize");
-    mf::FontHeader::MaxGlyphWidth::write(ptr, maxGlyphWidth, "maxGlyphWidth");
-    mf::FontHeader::GlyphHeight::write(ptr, glyphHeight, "glyphHeight");
-    mf::FontHeader::XMonoSpacing::write(ptr, 0, "xMonoSpacing");
-    mf::FontHeader::YSpacing::write(ptr, ySpacing, "ySpacing");
 
     blob.insert(blob.end(), header, header + sizeof(header));
   }
@@ -1184,6 +1321,8 @@ void Encoder::generateBlob() {
     if (largeFont) {
       mf::NormalGlyphEntry::EntryPoint::write(ptr, glyph->entryPoint,
                                               "entryPoint");
+      mf::NormalGlyphEntry::UseAltTop::write(ptr, glyph->useAltTop);
+      mf::NormalGlyphEntry::UseAltBottom::write(ptr, glyph->useAltBottom);
       ptr += mf::NormalGlyphEntry::SIZE;
     } else {
       mf::SmallGlyphEntry::EntryPoint::write(ptr, glyph->entryPoint,
@@ -1192,19 +1331,15 @@ void Encoder::generateBlob() {
     }
 
     if (largeFont) {
-      mf::NormalGlyphDimension::GlyphWidth::write(ptr, glyph->width,
-                                                  "glyphWidth");
-      mf::NormalGlyphDimension::XSpacing::write(ptr, glyph->xSpacing,
-                                                "xSpacing");
-      mf::NormalGlyphDimension::XStepBack::write(ptr, glyph->xStepBack,
-                                                 "xStepBack");
+      mf::NormalGlyphDim::GlyphWidth::write(ptr, glyph->width, "glyphWidth");
+      mf::NormalGlyphDim::XSpaceOffset::write(ptr, glyph->xSpaceOffset,
+                                              "xSpaceOffset");
+      mf::NormalGlyphDim::XStepBack::write(ptr, glyph->xStepBack, "xStepBack");
     } else {
-      mf::SmallGlyphDimension::GlyphWidth::write(ptr, glyph->width,
-                                                 "glyphWidth");
-      mf::SmallGlyphDimension::XSpacing::write(ptr, glyph->xSpacing,
-                                               "xSpacing");
-      mf::SmallGlyphDimension::XStepBack::write(ptr, glyph->xStepBack,
-                                                "xStepBack");
+      mf::SmallGlyphDim::GlyphWidth::write(ptr, glyph->width, "glyphWidth");
+      mf::SmallGlyphDim::XSpaceOffset::write(ptr, glyph->xSpaceOffset,
+                                             "xSpaceOffset");
+      mf::SmallGlyphDim::XStepBack::write(ptr, glyph->xStepBack, "xStepBack");
     }
 
     // append to blob

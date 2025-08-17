@@ -1,5 +1,7 @@
 #pragma once
 
+#include "mamefont/blob_format.hpp"
+#include "mamefont/glyph.hpp"
 #include "mamefont/mamefont_common.hpp"
 
 namespace mamefont {
@@ -19,8 +21,8 @@ class Font {
   MAMEFONT_INLINE bool farPixelFirst() const {
     return header.flags.farPixelFirst();
   }
-  MAMEFONT_INLINE PixelFormat bitsPerPixel() const {
-    return header.flags.bitsPerPixel();
+  MAMEFONT_INLINE PixelFormat fragFormat() const {
+    return header.flags.fragFormat();
   }
   MAMEFONT_INLINE bool largeFont() const { return header.flags.largeFont(); }
   MAMEFONT_INLINE bool proportional() const {
@@ -38,29 +40,9 @@ class Font {
     return header.fragmentTableSize;
   }
   MAMEFONT_INLINE uint8_t maxGlyphWidth() const { return header.maxGlyphWidth; }
-  MAMEFONT_INLINE uint8_t glyphHeight() const { return header.glyphHeight; }
-  MAMEFONT_INLINE uint8_t xMonoSpacing() const { return header.xMonoSpacing; }
-  MAMEFONT_INLINE uint8_t ySpacing() const { return header.ySpacing; }
-
-  MAMEFONT_NOINLINE frag_index_t calcGlyphBufferSize(const Glyph *glyph,
-                                                     uint8_t *stride) const {
-    uint8_t w = (header.flags.proportional() && glyph) ? glyph->glyphWidth
-                                                       : header.maxGlyphWidth;
-    uint8_t h = header.glyphHeight;
-    bool bpp1 = (bitsPerPixel() == PixelFormat::BW_1BIT);
-    bool verticalFrag = header.flags.verticalFragment();
-    uint8_t viewport = verticalFrag ? h : w;
-    uint8_t trackLength = verticalFrag ? w : h;
-    uint8_t numTracks = bpp1 ? ((viewport + 7) / 8) : ((viewport + 3) / 4);
-    if (stride) {
-      *stride = verticalFrag ? trackLength : numTracks;
-    }
-    return numTracks * trackLength;
-  }
-
-  MAMEFONT_INLINE frag_index_t calcGlyphBufferSize(uint8_t *stride) const {
-    return calcGlyphBufferSize(nullptr, stride);
-  }
+  MAMEFONT_INLINE uint8_t fontHeight() const { return header.fontHeight; }
+  MAMEFONT_INLINE uint8_t xSpace() const { return header.xSpace; }
+  MAMEFONT_INLINE uint8_t ySpace() const { return header.ySpace; }
 
   MAMEFONT_INLINE uint16_t getGlyphEntryOffset(uint16_t c) const {
     uint16_t offset = c;
@@ -80,60 +62,105 @@ class Font {
     return fragmentTableOffset() + header.fragmentTableSize;
   }
 
-  MAMEFONT_NOINLINE Status getGlyph(uint8_t c, Glyph *glyph) const {
-    if (!glyph) {
-      MAMEFONT_RETURN_ERROR(Status::NULL_POINTER);
-    }
-
-    if (c < header.firstCode || header.lastCode < c) {
-      MAMEFONT_RETURN_ERROR(Status::CHAR_CODE_OUT_OF_RANGE);
-    }
-
-    uint8_t index = c - header.firstCode;
-    const uint8_t *ptr = blob + getGlyphEntryOffset(index);
-
-    bool valid;
-    uint16_t entryPoint;
-    if (header.flags.largeFont()) {
-      uint16_t val = readBlobU16(ptr);
-      ptr += 2;
-      valid = val != 0xFFFF;
-      entryPoint = NormalGlyphEntry::EntryPoint::read(val);
-    } else {
-      uint8_t val = readBlobU8(ptr++);
-      valid = val != 0xFF;
-      entryPoint = SmallGlyphEntry::EntryPoint::read(val);
-    }
-    glyph->entryPoint = valid ? entryPoint : DUMMY_ENTRY_POINT;
-
-    if (header.flags.proportional()) {
-      if (header.flags.largeFont()) {
-        uint8_t byte0 = readBlobU8(ptr++);
-        glyph->glyphWidth = NormalGlyphDimension::GlyphWidth::read(byte0);
-        uint8_t byte1 = readBlobU8(ptr++);
-        glyph->xSpacing = NormalGlyphDimension::XSpacing::read(byte1);
-        glyph->xStepBack = NormalGlyphDimension::XStepBack::read(byte1);
-      } else {
-        uint8_t byte0 = readBlobU8(ptr++);
-        glyph->glyphWidth = SmallGlyphDimension::GlyphWidth::read(byte0);
-        glyph->xSpacing = SmallGlyphDimension::XSpacing::read(byte0);
-        glyph->xStepBack = SmallGlyphDimension::XStepBack::read(byte0);
-      }
-    } else {
-      glyph->glyphWidth = header.maxGlyphWidth;
-      glyph->xSpacing = header.xMonoSpacing;
-      glyph->xStepBack = 0;
-    }
-
-    return valid ? Status::SUCCESS : Status::GLYPH_NOT_DEFINED;
-  }
-
-#ifdef MAMEFONT_DEBUG
-  frag_t lookupFragment(int index) const {
+  MAMEFONT_INLINE frag_t lookupFragment(int index) const {
     if (index < 0 || header.fragmentTableSize <= index) return 0x00;
     return readBlobU8(blob + fragmentTableOffset() + index);
   }
-#endif
+
+  frag_index_t calcMaxGlyphBufferSize() const;
+  Status getGlyph(uint8_t c, Glyph *glyph) const;
 };
+
+#ifdef MAMEFONT_INCLUDE_IMPL
+
+frag_index_t Font::calcMaxGlyphBufferSize() const {
+  uint8_t w = header.maxGlyphWidth;
+  uint8_t h = header.fontHeight;
+  bool bpp1 = (fragFormat() == PixelFormat::BW_1BIT);
+  bool verticalFrag = header.flags.verticalFragment();
+  uint8_t viewport = verticalFrag ? h : w;
+  uint8_t trackLength = verticalFrag ? w : h;
+  uint8_t numTracks = bpp1 ? ((viewport + 7) / 8) : ((viewport + 3) / 4);
+  return numTracks * trackLength;
+}
+
+Status Font::getGlyph(uint8_t c, Glyph *glyph) const {
+  if (!glyph) {
+    MAMEFONT_THROW_OR_RETURN(Status::NULL_POINTER);
+  }
+
+  if (c < header.firstCode || header.lastCode < c) {
+    MAMEFONT_THROW_OR_RETURN(Status::CHAR_CODE_OUT_OF_RANGE);
+  }
+
+  uint8_t glyphFlags = 0;
+  if (header.flags.verticalFragment()) {
+    Glyph::VerticalFragment::write(&glyphFlags, true);
+  }
+  if (header.flags.farPixelFirst()) {
+    Glyph::FarPixelFirst::write(&glyphFlags, true);
+  }
+  Glyph::FragFormat::write(&glyphFlags,
+                            static_cast<uint8_t>(header.flags.fragFormat()));
+
+  uint8_t index = c - header.firstCode;
+  const uint8_t *ptr = blob + getGlyphEntryOffset(index);
+
+  bool valid;
+  if (header.flags.largeFont()) {
+    uint16_t val = readBlobU16(ptr);
+    ptr += 2;
+
+    valid = (val != 0xFFFF);
+    Glyph::Valid::write(&glyphFlags, valid);
+
+    glyph->entryPoint = NormalGlyphEntry::EntryPoint::read(val);
+
+    uint8_t byte2 = val >> 8;
+    bool useAltTop = NormalGlyphEntry::UseAltTop::read(byte2);
+    if (useAltTop) Glyph::UseAltTop::write(&glyphFlags, true);
+    bool useAltBottom = NormalGlyphEntry::UseAltBottom::read(byte2);
+    if (useAltBottom) Glyph::UseAltBottom::write(&glyphFlags, true);
+
+    uint8_t top = useAltTop ? header.altTop : 0;
+    uint8_t bottom = useAltBottom ? header.altBottom : header.fontHeight;
+    glyph->yOffset = top;
+    glyph->glyphHeight = bottom - top;
+  } else {
+    uint8_t val = readBlobU8(ptr++);
+
+    valid = (val != 0xFF);
+    Glyph::Valid::write(&glyphFlags, valid);
+
+    glyph->entryPoint = SmallGlyphEntry::EntryPoint::read(val);
+
+    glyph->yOffset = 0;
+    glyph->glyphHeight = header.fontHeight;
+  }
+
+  glyph->xSpace = header.xSpace;
+  if (header.flags.proportional()) {
+    if (header.flags.largeFont()) {
+      uint8_t byte0 = readBlobU8(ptr++);
+      glyph->glyphWidth = NormalGlyphDim::GlyphWidth::read(byte0);
+      uint8_t byte1 = readBlobU8(ptr++);
+      glyph->xSpace += NormalGlyphDim::XSpaceOffset::read(byte1);
+      glyph->xStepBack = NormalGlyphDim::XStepBack::read(byte1);
+    } else {
+      uint8_t byte0 = readBlobU8(ptr++);
+      glyph->glyphWidth = SmallGlyphDim::GlyphWidth::read(byte0);
+      glyph->xSpace += SmallGlyphDim::XSpaceOffset::read(byte0);
+      glyph->xStepBack = SmallGlyphDim::XStepBack::read(byte0);
+    }
+  } else {
+    glyph->glyphWidth = header.maxGlyphWidth;
+    glyph->xStepBack = 0;
+  }
+
+  glyph->flags = glyphFlags;
+  return valid ? Status::SUCCESS : Status::GLYPH_NOT_DEFINED;
+}
+
+#endif
 
 }  // namespace mamefont

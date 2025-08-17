@@ -34,7 +34,7 @@ Compressed font format specification and library for tiny-footprint embedded pro
 
 |Size \[Bytes\]|Name|
 |:--|:--|
-|8|Font Header|
+|12|Font Header|
 |(Variable)|Extended Header|
 |(1, 2, or 4) \* (number of glyphs)|Glyph Table|
 |`fragmentTableSize`|Fragment Table|
@@ -46,23 +46,34 @@ A structure that provides information common to the entire font.
 
 |Byte Offset|Bit Range|Value|
 |:--:|:--:|:--|
-|0|7:4|(Reserved)|
-||3:0|`formatVersion`|
+|0|7:0|`formatVersion`|
 |1|7:0|`fontFlags`|
 |2|7:0|`firstCode`|
 |3|7:0|`lastCode`|
-|4|7:5|(Reserved)||
-||4:0|`fragmentTableSize` / 2 - 1|
-|5|7:6|(Reserved)|
+|4|7:6|0x0 (Reserved)|
 ||5:0|`maxGlyphWidth` - 1|
-|6|7:6|(Reserved)|
-||5:0|`glyphHeight` - 1|
-|7|7:4|`xMonoSpacing`|
-||3:0|`ySpacing`|
+|5|7:6|0x0 (Reserved)|
+||5:0|`fontHeight` - 1|
+|6|7:6|0x0 (Reserved)|
+||5:0|`xSpace` + 32|
+|7|7:6|0x0 (Reserved)|
+||5:0|`ySpace`|
+|8|7:6|0x0 (Reserved)|
+||5:0|`yStepBack`|
+|9|7:6|0x0 (Reserved)|
+||5:0|`altTop`|
+|10|7:6|0x0 (Reserved)|
+||5:0|`altBottom`|
+|11|7:5|0x0 (Reserved)|
+||4:0|`fragmentTableSize` / 2 - 1|
 
 ### `formatVersion`
 
-The format version of the font. Its value must be 0x1.
+The format version of the font.
+
+|Value|Description|
+|:--:|:--:|
+|0x00|Under Development|
 
 ### `fontFlags`
 
@@ -82,25 +93,31 @@ The format version of the font. Its value must be 0x1.
 
 ASCII code of the first/last entry of Glyph Table. `firstCode` must not exceed `lastGlyphs`.
 
-### `fragmentTableSize`
-
-Number of entries of Fragment Table. Must be in the range 2 ≦ `fragmentTableSize` ≦ 64 and a multiple of 2.
-
 ### `maxGlyphWidth`
 
 In monospaced fonts, `maxGlyphWidth` is the common width of all glyphs. In proportional fonts, `maxGlyphWidth` is `glyphWidth` value of widest glyph. Decoder can use this to determine size of Glyph Buffer. If the font does not contain any valid glyphs, then `maxGlyphWidth` must have a value of 1 (`fontDimension[0]` = 0x00).
 
-### `glyphHeight`
+### `fontHeight`
 
-Height of glyph in pixels. `glyphHeight` + `ySpacing` is same as `yAdvance` of GFXfont.
+Height of glyph in pixels. `fontHeight` + `ySpace` is same as `yAdvance` of GFXfont.
 
-### `xMonoSpacing`
+### `xSpace`
 
-In monospaced fonts, `xMonoSpacing` is distance in pixels from the right edge of the current glyph to the left edge of the next glyph. In proportional fonts, this should be ignored.
+In monospaced fonts, `xSpace` is distance in pixels from the right edge of the current glyph to the left edge of the next glyph. In proportional fonts, this will be added to `xSpaceOffset` of each glyph.
 
-### `ySpacing`
+### `ySpace`
 
 Distance in pixels from the bottom of the current line to the top of the next line.
+
+### `altTop` / `altBottom`
+
+`altTop` and `altBottom` provide additional positions to narrow the encoding range. For example, for glyphs with no ascenders or descenders, such as 'o', encoding only the valid pixels results in better compression. Typically, altTop is set to the mean line position, and altBottom is set to the baseline. Whether to use normal top/bottom or alternative top/bottom is specified by the `useAltTop`/`useAltBottom` flag in the glyph table.
+
+![](./img/alt_top_bottom.svg)
+
+### `fragmentTableSize`
+
+Number of entries of Fragment Table. Must be in the range 2 ≦ `fragmentTableSize` ≦ 64 and a multiple of 2.
 
 ## Extended Header
 
@@ -131,13 +148,14 @@ There are four glyph table formats depending on the combination of the `largeFon
 The Small Format (`largeFont` = 0) can be applied when all of the following conditions are met:
 
 - 1 ≦ `glyphWidth` ≦ 16 for all glyphs.
-- 0 ≦ `xSpacing` ≦ 3 for all glyphs.
+- 0 ≦ `xSpaceOffset` ≦ 3 for all glyphs.
 - 0 ≦ `xStepBack` ≦ 3 for all glyphs.
 - 0 ≦ `entryPoint` ≦ 509 for all glyphs.
+- `useAltTop` = 0 and `useAltBottom` = 0 for all glyphs.
 
 For Small Format, all of `entryPoint` must be aligned to 2-Byte boundaries.
 
-In the monospaced format, the width of each glyph is specified by `maxGlyphWidth`, and the spacing between characters is specified by `xMonoSpacing`.
+In the monospaced format, the width of each glyph is specified by `maxGlyphWidth`, and the spacing between characters is specified by `xSpace`.
 
 The size of the glyph table must be a multiple of 2 bytes. If the total size of each field does not reach a 2-byte boundary, padding must be inserted at the end. The padding value must be 0xFF.
 
@@ -158,7 +176,8 @@ The size of the glyph table must be a multiple of 2 bytes. If the total size of 
 |Byte Offset|Bit Range|Value|
 |:--:|:--:|:--|
 |0|7:0|`entryPoint[7:0]`|
-|1|7:6|(Reserved)|
+|1|7|`useAltBottom`|
+||6|`useAltTop`|
 ||5:0|`entryPoint[13:8]`|
 
 `glyphEntry` = 0xFFFF indicates a missing glyph.
@@ -167,6 +186,14 @@ The size of the glyph table must be a multiple of 2 bytes. If the total size of 
 
 Offset from start of Bytecode Block in bytes.
 
+#### `useAltTop`
+
+Start decoding from `altTop`
+
+#### `useAltBottom`
+
+End decoding with `altBottom`
+
 ### `glyphDimension`
 
 #### Small Format
@@ -174,7 +201,7 @@ Offset from start of Bytecode Block in bytes.
 |Byte Offset|Bit Range|Value|
 |:--:|:--:|:--|
 |0|7:6|`xStepBack`|
-||5:4|`xSpacing`|
+||5:4|`xSpaceOffset`|
 ||3:0|`glyphWidth` - 1|
 
 #### NormalFormat
@@ -183,10 +210,10 @@ Offset from start of Bytecode Block in bytes.
 |:--:|:--:|:--|
 |0|7:6|(Reserved)|
 ||5:0|`glyphWidth` - 1|
-|1|7:5|`xStepBack`|
-||4:0|`xSpacing` + 16||
+|1|7:4|`xStepBack`|
+||3:0|`xSpaceOffset`||
 
-`glyphWidth` - `xStepBack` + `xSpacing` is same as `xAdvance` of GFXfont. Depending on these values, rendered characters can overlap, but it is up to the renderer implementation to render this as the font designer expected.
+`glyphWidth` - `xStepBack` + `xSpace` + `xSpaceOffset` is same as `xAdvance` of GFXfont. Depending on these values, rendered characters can overlap, but it is up to the renderer implementation to render this as the font designer expected.
 
 #### `glyphWidth`
 
@@ -196,7 +223,7 @@ Glyph width in pixels.
 
 The glyph is rendered shifted to the left by the number of pixels specified by this value.
 
-#### `xSpacing`
+#### `xSpaceOffset`
 
 Distance in pixels from the right edge of the current glyph to the left edge of the next glyph.
 

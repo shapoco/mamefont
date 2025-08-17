@@ -17,7 +17,8 @@ std::string i2s(int value, int width) {
 
 std::string f2s(float value, int width, int precision) {
   std::ostringstream oss;
-  oss << std::setw(width) << std::fixed << std::setprecision(precision) << value;
+  oss << std::setw(width) << std::fixed << std::setprecision(precision)
+      << value;
   return oss.str();
 }
 
@@ -47,16 +48,6 @@ std::string u2x16(uint16_t value) {
   char buf[6];
   snprintf(buf, sizeof(buf), "%04X", value);
   return buf;
-}
-
-void dumpByteArray(const std::vector<uint8_t> &arr, const std::string &indent,
-                   int offset, int length) {
-  size_t n = length < 0 ? arr.size() : length;
-  for (size_t i = 0; i < n; i++) {
-    if (i % 32 == 0) std::cout << indent;
-    std::cout << u2x8(arr[offset + i]) << " ";
-    if ((i + 1) % 32 == 0 || i == n - 1) std::cout << std::endl;
-  }
 }
 
 void dumpCStyleArrayContent(std::ostream &os, const std::vector<uint8_t> &arr,
